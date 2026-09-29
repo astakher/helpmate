@@ -1,0 +1,35 @@
+# Replace the placeholders with real GitHub usernames once everyone has joined the repo.
+#   @helpmate-a = Workstream A (agent, LLM, memory, evaluation)
+#   @helpmate-b = Workstream B (backend, data, integrations, security, deployment)
+#   @helpmate-c = Workstream C (web app, voice, notifications) — Aman Takher
+# The LAST matching pattern wins, so shared paths come last.
+
+*                                   @helpmate-a @helpmate-b @helpmate-c
+
+# Workstream A
+/backend/src/helpmate/agent/        @helpmate-a
+/backend/src/helpmate/memory/       @helpmate-a
+/backend/src/helpmate/eval/         @helpmate-a
+/backend/src/helpmate/adapters/ollama_*.py  @helpmate-a
+/scripts/bench_models.py            @helpmate-a @helpmate-c
+
+# Workstream B
+/backend/src/helpmate/worker/       @helpmate-b
+/backend/src/helpmate/adapters/postgres_*.py  @helpmate-b
+/backend/src/helpmate/adapters/gmail*.py      @helpmate-b
+/backend/src/helpmate/adapters/gcal*.py       @helpmate-b
+/backend/src/helpmate/adapters/s3_*.py        @helpmate-b
+/infra/                             @helpmate-b
+
+# Workstream C
+/web/                               @helpmate-c
+/services/speech/                   @helpmate-c
+/backend/src/helpmate/adapters/speech_*.py    @helpmate-c
+/backend/src/helpmate/adapters/webpush_*.py   @helpmate-c
+/backend/src/helpmate/adapters/quiet_hours.py @helpmate-c
+
+# Shared contract: every change needs all three reviewers
+/contracts/                         @helpmate-a @helpmate-b @helpmate-c
+/backend/src/helpmate/domain/       @helpmate-a @helpmate-b @helpmate-c
+/backend/src/helpmate/api/schemas/  @helpmate-a @helpmate-b @helpmate-c
+/.github/                           @helpmate-a @helpmate-b @helpmate-c

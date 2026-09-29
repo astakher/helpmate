@@ -1,0 +1,37 @@
+# Secrets — never commit. Copy .env.example to .env
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / web
+node_modules/
+dist/
+dev-dist/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Local models and data (downloaded by scripts, never committed)
+services/speech/models/
+*.onnx
+voices-*.bin
+data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

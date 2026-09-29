@@ -1,0 +1,33 @@
+# API contract
+
+`contracts/openapi.yaml` is the single source of truth between the web app (C) and the backend (A + B).
+
+## How it's produced
+1. Request/response models live in `backend/src/helpmate/api/schemas/` (pydantic).
+2. `uv run python ../scripts/export_openapi.py` (run from `backend/`) writes `contracts/openapi.yaml`.
+3. `npm run gen:api` (from `web/`) turns it into `web/src/api/schema.d.ts`. The typed client (`openapi-fetch`) and the MSW mocks use those types.
+4. CI regenerates both files and fails if either differs from what's committed, so every contract change shows up in the PR diff.
+
+## Chat stream events
+OpenAPI can't describe the events inside an SSE stream, so `ChatEvent` is a pydantic discriminated union (keyed on `type`) that is also published as a named schema component. Each SSE frame is:
+
+```
+event: <type>
+data: <ChatEvent JSON>
+```
+
+| `type` | Payload | Who emits |
+|---|---|---|
+| `message.delta` | `{text}` | agent (streamed tokens) |
+| `tool.started` | `{call_id, tool, args}` | agent |
+| `tool.result` | `{call_id, ok, summary}` | agent |
+| `proposal.created` | `{proposal: Proposal}` | policy engine |
+| `message.done` | `{message_id, ttft_ms, tokens}` | agent |
+| `error` | `{code, message}` | any |
+
+The server sends a `: ping` comment every 15 s so proxies (Tailscale) keep the stream open.
+
+## Change rules
+- Additive changes (a new endpoint, optional field or event type) are fine with the normal review, but mention them in the PR.
+- Breaking changes (rename, remove, type change, required field) need all three members to agree first, and they stop being allowed after week 2.
+- CODEOWNERS enforces three-way review on `contracts/`, `domain/` and `api/schemas/`.
