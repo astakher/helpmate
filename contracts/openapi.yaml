@@ -208,6 +208,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/tools:
+    get:
+      tags:
+      - tools
+      summary: List Tools
+      description: The agent's tools and their argument schemas (the approval card's Edit form uses these).
+      operationId: list_tools_api_tools_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ToolInfo'
+                type: array
+                title: Response List Tools Api Tools Get
   /api/folders:
     get:
       tags:
@@ -1868,6 +1885,32 @@ components:
       - tasks
       - pending_proposals
       title: TodayOut
+    ToolInfo:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        read_only:
+          type: boolean
+          title: Read Only
+        risk:
+          $ref: '#/components/schemas/Risk'
+        parameters:
+          additionalProperties: true
+          type: object
+          title: Parameters
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - description
+      - read_only
+      - risk
+      - parameters
+      title: ToolInfo
     Transcript:
       properties:
         text:

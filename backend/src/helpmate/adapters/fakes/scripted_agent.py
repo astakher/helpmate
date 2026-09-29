@@ -1,8 +1,9 @@
 """ScriptedAgent (HELPMATE_AGENT=scripted): the stand-in for Workstream A's agent loop.
 
 Recognised phrases (see intent_parser) become tool calls that go through the real policy engine,
-so approval cards, the audit log and reminders all work. Anything else is passed to the LLMPort,
-which is the fake LLM or Ollama, so the real model can be tried before the agent loop exists.
+so approval cards, the audit log and reminders all work. "remember that ..." files a memory
+suggestion for the owner to review. Anything else is passed to the LLMPort (the fake LLM or
+Ollama), so the real model can be tried before the agent loop exists.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ from helpmate.domain.events import (
     ToolResult,
     ToolStarted,
 )
-from helpmate.domain.models import LLMMessage, Source, new_id
-from helpmate.domain.ports import Clock, LLMPort
+from helpmate.domain.models import LLMMessage, MemorySuggestion, Source, new_id
+from helpmate.domain.ports import Clock, LLMPort, MemoryRepo
 
 SYSTEM_PROMPT = (
     "You are HelpMate, a concise personal assistant running entirely on the owner's laptop. "
@@ -32,16 +33,25 @@ SYSTEM_PROMPT = (
     "owner can try phrases like 'remind me to call mom at 5pm' or 'add task read chapter 3'."
 )
 
+_REMEMBER = re.compile(r"^(?:please )?remember(?: that)? (?P<fact>.{3,500})$", re.IGNORECASE)
+
 
 class ScriptedAgent:
     name = "scripted"
     is_fake = True
 
     def __init__(
-        self, policy: PolicyEngine, llm: LLMPort, clock: Clock, tz: ZoneInfo, stream_delay: float
+        self,
+        policy: PolicyEngine,
+        llm: LLMPort,
+        memory: MemoryRepo,
+        clock: Clock,
+        tz: ZoneInfo,
+        stream_delay: float,
     ) -> None:
         self._policy = policy
         self._llm = llm
+        self._memory = memory
         self._clock = clock
         self._tz = tz
         self._delay = stream_delay
@@ -50,9 +60,22 @@ class ScriptedAgent:
         started = time.perf_counter()
         first_token: float | None = None
         tokens = 0
+        phrase = " ".join(text.split()).rstrip(".!")
 
-        call = parse_intent(text, self._clock.now(), self._tz)
-        if call is not None:
+        reply: str | None = None
+        if match := _REMEMBER.match(phrase):
+            suggestion = MemorySuggestion(
+                id=new_id(),
+                text=match["fact"],
+                source=f"chat:{session_id}",
+                created_at=self._clock.now(),
+            )
+            await self._memory.add_suggestion(suggestion)
+            yield ToolResult(
+                call_id=new_id(), ok=True, summary=f"Memory suggestion: {suggestion.text}"
+            )
+            reply = "I'll remember that once you approve it on the Memory page."
+        elif (call := parse_intent(text, self._clock.now(), self._tz)) is not None:
             yield ToolStarted(call_id=call.id, tool=call.name, args=call.arguments)
             outcome = await self._policy.handle_call(call, session_id)
             if outcome.proposal is not None:
@@ -64,6 +87,8 @@ class ScriptedAgent:
             else:
                 yield ToolResult(call_id=call.id, ok=outcome.ok, summary=outcome.summary)
                 reply = outcome.summary
+
+        if reply is not None:
             for piece in re.findall(r"\S+\s*", reply):
                 if self._delay:
                     await asyncio.sleep(self._delay)

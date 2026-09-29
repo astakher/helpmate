@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ApiError } from "../../api/client";
-import { fetchProposal, useDecide } from "../../api/queries";
+import { fetchProposal, useDecide, useTools } from "../../api/queries";
 import type { Decision, Proposal } from "../../api/types";
+import { EditProposalForm } from "./EditProposalForm";
 
 const OUTCOME: Record<Proposal["status"], string> = {
   pending: "Waiting for you",
@@ -12,29 +13,34 @@ const OUTCOME: Record<Proposal["status"], string> = {
 };
 
 /**
- * An approval card: the only way an agent-initiated write ever runs.
- * The same card appears inline in chat and on the Approvals page. If it was decided elsewhere,
- * the server answers 409 and the card refreshes itself.
+ * An approval card: the only way an agent-initiated write ever runs. Approve, Edit (then
+ * approve) or Cancel. The same card appears inline in chat and on the Approvals page; if it was
+ * decided elsewhere, the server answers 409 and the card refreshes itself.
  */
 export function ProposalCard({ proposal }: { proposal: Proposal }) {
   // The latest server answer for this card wins over the (possibly stale) prop.
   const [decided, setDecided] = useState<Proposal | null>(null);
+  const [editing, setEditing] = useState(false);
   const current = decided?.id === proposal.id ? decided : proposal;
   const decide = useDecide();
+  const tool = useTools().data?.find((t) => t.name === current.tool);
   const titleId = `proposal-${current.id}-title`;
 
-  async function onDecision(decision: Decision) {
+  async function onDecision(decision: Decision, args?: Record<string, unknown>) {
     try {
-      setDecided(await decide.mutateAsync({ id: current.id, decision }));
+      setDecided(await decide.mutateAsync({ id: current.id, decision, args }));
+      setEditing(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setDecided(await fetchProposal(current.id));
+        setEditing(false);
       }
     }
   }
 
   const pending = current.status === "pending";
   const external = current.risk === "external";
+  const conflict = decide.error instanceof ApiError && decide.error.status === 409;
 
   return (
     <article className={`card proposal proposal--${current.status}`} aria-labelledby={titleId}>
@@ -51,21 +57,34 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
         </pre>
       )}
 
-      {pending ? (
+      {pending && editing && tool ? (
+        <EditProposalForm
+          proposal={current}
+          tool={tool}
+          busy={decide.isPending}
+          onSave={(args) => void onDecision("edit", args)}
+          onCancel={() => setEditing(false)}
+        />
+      ) : pending ? (
         <div className="proposal__actions">
           <button
             type="button"
             className="btn btn--primary"
             disabled={decide.isPending}
-            onClick={() => onDecision("approve")}
+            onClick={() => void onDecision("approve")}
           >
             Approve
           </button>
+          {tool && (
+            <button type="button" className="btn" disabled={decide.isPending} onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          )}
           <button
             type="button"
             className="btn"
             disabled={decide.isPending}
-            onClick={() => onDecision("reject")}
+            onClick={() => void onDecision("reject")}
           >
             Cancel
           </button>
@@ -76,7 +95,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
           {current.result ? ` — ${current.result}` : ""}
         </p>
       )}
-      {decide.isError && !(decide.error instanceof ApiError && decide.error.status === 409) && (
+      {decide.isError && !conflict && (
         <p className="error" role="alert">
           Couldn't save that decision: {decide.error.message}
         </p>

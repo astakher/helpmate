@@ -114,6 +114,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tools
+         * @description The agent's tools and their argument schemas (the approval card's Edit form uses these).
+         */
+        get: operations["list_tools_api_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/folders": {
         parameters: {
             query?: never;
@@ -1109,6 +1129,20 @@ export interface components {
             /** Pending Proposals */
             pending_proposals: components["schemas"]["Proposal"][];
         };
+        /** ToolInfo */
+        ToolInfo: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Read Only */
+            read_only: boolean;
+            risk: components["schemas"]["Risk"];
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+        };
         /** Transcript */
         Transcript: {
             /** Text */
@@ -1478,6 +1512,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tools_api_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolInfo"][];
                 };
             };
         };

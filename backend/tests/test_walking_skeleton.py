@@ -79,6 +79,33 @@ async def test_unrecognised_text_goes_to_the_llm(client, parse_sse):
     assert events[-1]["type"] == "message.done"
 
 
+async def test_remember_files_a_suggestion_that_needs_approval(client, parse_sse):
+    session = (await client.post("/api/chat/sessions", json={})).json()
+    response = await client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"text": "Remember that my advisor is Dr. Lee.", "source": "text"},
+    )
+    events = parse_sse(response.text)
+    assert any(e["type"] == "tool.result" and "advisor" in e["summary"] for e in events)
+    assert (await client.get("/api/memory/facts")).json() == []  # not stored yet
+
+    [suggestion] = (await client.get("/api/memory/suggestions")).json()
+    assert suggestion["source"] == f"chat:{session['id']}"
+    decided = await client.post(
+        f"/api/memory/suggestions/{suggestion['id']}/decision", json={"decision": "approve"}
+    )
+    assert decided.json()["status"] == "approved"
+    [fact] = (await client.get("/api/memory/facts")).json()
+    assert fact["text"] == "my advisor is Dr. Lee"
+
+
+async def test_tools_endpoint_exposes_argument_schemas(client):
+    tools = {t["name"]: t for t in (await client.get("/api/tools")).json()}
+    assert set(tools) == {"create_reminder", "create_task", "list_reminders"}
+    assert tools["list_reminders"]["read_only"] is True
+    assert "due_at" in tools["create_reminder"]["parameters"]["properties"]
+
+
 async def test_unknown_session_is_404(client):
     response = await client.post(
         "/api/chat/sessions/nope/messages", json={"text": "hi", "source": "text"}

@@ -167,7 +167,9 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     policy = PolicyEngine(tools, ToolDeps(repos, scheduler, clock, settings.tz))
     agent: AgentPort
     if settings.agent == "scripted":
-        agent = ScriptedAgent(policy, llm, clock, settings.tz, settings.fake_stream_delay_seconds)
+        agent = ScriptedAgent(
+            policy, llm, repos.memory, clock, settings.tz, settings.fake_stream_delay_seconds
+        )
     else:
         _not_yet("agent", settings.agent)
 

@@ -2,9 +2,33 @@
 // Used by `npm run dev:mock` (no backend at all) and by the unit tests (msw/node).
 // The backend's own fakes remain the reference behaviour; keep these to the same shapes.
 import { http, HttpResponse } from "msw";
-import type { ChatEvent, HealthOut, Proposal, Reminder, Task, TodayOut } from "../api/types";
+import type {
+  ChatEvent,
+  Folder,
+  HealthOut,
+  Item,
+  MemoryFact,
+  MemorySuggestion,
+  NotificationSettings,
+  Proposal,
+  Reminder,
+  Task,
+  TodayOut,
+  ToolInfo,
+  User,
+} from "../api/types";
 
-type Db = { proposals: Proposal[]; reminders: Reminder[]; tasks: Task[] };
+type Db = {
+  proposals: Proposal[];
+  reminders: Reminder[];
+  tasks: Task[];
+  folders: Folder[];
+  items: Item[];
+  suggestions: MemorySuggestion[];
+  facts: MemoryFact[];
+  settings: NotificationSettings;
+  auth: { signedIn: boolean; mfaRequired: boolean };
+};
 
 export const db: Db = fresh();
 
@@ -12,12 +36,75 @@ export function resetDb() {
   Object.assign(db, fresh());
 }
 
-function fresh(): Db {
-  return { proposals: [], reminders: [], tasks: [] };
-}
-
 const newId = () => crypto.randomUUID().replaceAll("-", "");
 const nowIso = () => new Date().toISOString();
+const notFound = (what: string) => HttpResponse.json({ detail: `${what} not found` }, { status: 404 });
+
+function fresh(): Db {
+  const created = "2026-09-28T12:00:00Z";
+  return {
+    proposals: [],
+    reminders: [],
+    tasks: [],
+    folders: [
+      ...["Projects", "Areas", "Resources", "Archive"].map(
+        (name): Folder => ({ id: `para-${name.toLowerCase()}`, name, kind: "para", fields: [], created_at: created }),
+      ),
+      {
+        id: "books",
+        name: "Books",
+        kind: "custom",
+        created_at: created,
+        fields: [
+          { key: "author", label: "Author", type: "text", options: null },
+          { key: "status", label: "Status", type: "select", options: ["to read", "reading", "done"] },
+          { key: "rating", label: "Rating", type: "rating", options: null },
+        ],
+      },
+    ],
+    items: [],
+    suggestions: [],
+    facts: [],
+    settings: { quiet_hours: null, timezone: "America/Toronto", max_per_hour: 6, private_previews: false },
+    auth: { signedIn: true, mfaRequired: true },
+  };
+}
+
+// Mirrors what pydantic emits for the backend's tool argument models.
+export const TOOLS: ToolInfo[] = [
+  {
+    name: "create_reminder",
+    description: "Create a one-off or recurring reminder, pushed to the owner's phone.",
+    read_only: false,
+    risk: "write",
+    parameters: {
+      type: "object",
+      required: ["text", "due_at"],
+      properties: {
+        text: { type: "string", title: "Text" },
+        due_at: { type: "string", format: "date-time", title: "Due At" },
+        recurrence: { anyOf: [{ type: "string" }, { type: "null" }], title: "Recurrence" },
+      },
+    },
+  },
+  {
+    name: "create_task",
+    description: "Add a task to a horizon.",
+    read_only: false,
+    risk: "write",
+    parameters: {
+      type: "object",
+      required: ["title"],
+      $defs: { Horizon: { type: "string", enum: ["week", "term", "year", "someday"], title: "Horizon" } },
+      properties: {
+        title: { type: "string", title: "Title" },
+        horizon: { $ref: "#/$defs/Horizon" },
+        due_at: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }], title: "Due At" },
+      },
+    },
+  },
+  { name: "list_reminders", description: "List reminders.", read_only: true, risk: "write", parameters: { type: "object", properties: {} } },
+];
 
 export function sseFrames(events: ChatEvent[], gapMs = 15): HttpResponse<ReadableStream> {
   const encoder = new TextEncoder();
@@ -38,19 +125,13 @@ const words = (text: string): ChatEvent[] =>
 
 const done = (): ChatEvent => ({ type: "message.done", message_id: newId(), ttft_ms: 42, tokens: 10 });
 
-function reply(text: string, sessionId: string): ChatEvent[] {
-  const reminder = /^remind me (?:to )?(.+?) in (\d+) ?(second|minute|hour)s?/i.exec(text.trim());
-  if (!reminder) return [...words(`(mock) You said: "${text}". Try: remind me to stretch in 1 minute.`), done()];
-
-  const [, what, amount, unit] = reminder;
-  const seconds = Number(amount) * { second: 1, minute: 60, hour: 3600 }[unit.toLowerCase() as "second"];
-  const args = { text: what, due_at: new Date(Date.now() + seconds * 1000).toISOString(), recurrence: null };
+function propose(sessionId: string, tool: string, title: string, summary: string, args: Record<string, unknown>): ChatEvent[] {
   const proposal: Proposal = {
     id: newId(),
     session_id: sessionId,
-    tool: "create_reminder",
-    title: `Reminder: ${what}`,
-    summary: `in ${amount} ${unit}${amount === "1" ? "" : "s"}`,
+    tool,
+    title,
+    summary,
     args,
     preview: null,
     risk: "write",
@@ -60,16 +141,73 @@ function reply(text: string, sessionId: string): ChatEvent[] {
     result: null,
   };
   db.proposals.unshift(proposal);
-  const callId = newId();
   return [
-    { type: "tool.started", call_id: callId, tool: proposal.tool, args },
+    { type: "tool.started", call_id: newId(), tool, args },
     { type: "proposal.created", proposal },
     ...words("I've prepared this. Approve the card to go ahead."),
     done(),
   ];
 }
 
+function reply(text: string, sessionId: string): ChatEvent[] {
+  const phrase = text.trim().replace(/[.!]+$/, "");
+  const reminder = /^remind me (?:to )?(.+?) in (\d+) ?(second|minute|hour)s?$/i.exec(phrase);
+  if (reminder) {
+    const [, what, amount, unit] = reminder;
+    const seconds = Number(amount) * { second: 1, minute: 60, hour: 3600 }[unit.toLowerCase() as "second"];
+    const due = new Date(Date.now() + seconds * 1000).toISOString();
+    return propose(sessionId, "create_reminder", `Reminder: ${what}`, `in ${amount} ${unit}${amount === "1" ? "" : "s"}`, {
+      text: what,
+      due_at: due,
+      recurrence: null,
+    });
+  }
+  const task = /^add task (.+?)(?: (this week|this term|this year|someday))?$/i.exec(phrase);
+  if (task) {
+    const horizon = { "this week": "week", "this term": "term", "this year": "year", someday: "someday" }[
+      (task[2] ?? "this week").toLowerCase() as "this week"
+    ];
+    return propose(sessionId, "create_task", `Task: ${task[1]}`, task[2] ?? "this week", { title: task[1], horizon, due_at: null });
+  }
+  const remember = /^remember(?: that)? (.{3,})$/i.exec(phrase);
+  if (remember) {
+    db.suggestions.unshift({ id: newId(), text: remember[1], source: `chat:${sessionId}`, status: "pending", created_at: nowIso() });
+    return [
+      { type: "tool.result", call_id: newId(), ok: true, summary: `Memory suggestion: ${remember[1]}` },
+      ...words("I'll remember that once you approve it on the Memory page."),
+      done(),
+    ];
+  }
+  return [...words(`(mock) You said: "${text}". Try: remind me to stretch in 1 minute.`), done()];
+}
+
+function execute(proposal: Proposal, args: Record<string, unknown>) {
+  if (proposal.tool === "create_reminder") {
+    db.reminders.push({
+      id: newId(),
+      text: String(args.text),
+      due_at: String(args.due_at),
+      recurrence: null,
+      status: "scheduled",
+      created_at: nowIso(),
+      sent_at: null,
+    });
+    return "Reminder set (mock).";
+  }
+  db.tasks.push({
+    id: newId(),
+    title: String(args.title),
+    horizon: (args.horizon as Task["horizon"]) ?? "week",
+    folder_id: null,
+    due_at: null,
+    done: false,
+    created_at: nowIso(),
+  });
+  return "Task added (mock).";
+}
+
 export const handlers = [
+  // --- system ---
   http.get("*/api/health", () =>
     HttpResponse.json<HealthOut>({
       status: "ok",
@@ -82,72 +220,179 @@ export const handlers = [
       ),
     }),
   ),
+  http.get("*/api/tools", () => HttpResponse.json(TOOLS)),
 
+  // --- auth ---
+  http.get("*/api/me", () =>
+    db.auth.signedIn
+      ? HttpResponse.json<User>({ id: "owner", display_name: "Owner (mock)", mfa_enabled: false })
+      : HttpResponse.json({ detail: "login required" }, { status: 401 }),
+  ),
+  http.post<never, { username: string; password: string }>("*/api/auth/login", async ({ request }) => {
+    const { password } = await request.json();
+    if (password !== "correct horse") return HttpResponse.json({ detail: "invalid credentials" }, { status: 401 });
+    if (db.auth.mfaRequired) return HttpResponse.json({ mfa_required: true, challenge_id: "challenge-1" });
+    db.auth.signedIn = true;
+    return HttpResponse.json({ mfa_required: false, challenge_id: null });
+  }),
+  http.post<never, { code: string }>("*/api/auth/mfa", async ({ request }) => {
+    const { code } = await request.json();
+    if (code !== "123456") return HttpResponse.json({ detail: "invalid code" }, { status: 401 });
+    db.auth.signedIn = true;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post("*/api/auth/mfa/enroll", () =>
+    HttpResponse.json({ otpauth_uri: "otpauth://totp/HelpMate:owner?secret=JBSWY3DPEHPK3PXP&issuer=HelpMate" }),
+  ),
+  http.post("*/api/auth/logout", () => {
+    db.auth.signedIn = false;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // --- chat ---
   http.post("*/api/chat/sessions", () =>
     HttpResponse.json({ id: newId(), title: null, created_at: nowIso() }, { status: 201 }),
   ),
-
   http.post<{ id: string }, { text: string }>("*/api/chat/sessions/:id/messages", async ({ params, request }) => {
     const body = await request.json();
     return sseFrames(reply(body.text, params.id));
   }),
 
+  // --- proposals ---
   http.get("*/api/proposals", ({ request }) => {
     const status = new URL(request.url).searchParams.get("status");
     return HttpResponse.json(db.proposals.filter((p) => !status || p.status === status));
   }),
-
   http.get<{ id: string }>("*/api/proposals/:id", ({ params }) => {
     const proposal = db.proposals.find((p) => p.id === params.id);
-    return proposal ? HttpResponse.json(proposal) : HttpResponse.json({ detail: "proposal not found" }, { status: 404 });
+    return proposal ? HttpResponse.json(proposal) : notFound("proposal");
   }),
-
-  http.post<{ id: string }, { decision: "approve" | "reject" | "edit" }>(
+  http.post<{ id: string }, { decision: "approve" | "reject" | "edit"; args?: Record<string, unknown> | null }>(
     "*/api/proposals/:id/decision",
     async ({ params, request }) => {
       const proposal = db.proposals.find((p) => p.id === params.id);
-      if (!proposal) return HttpResponse.json({ detail: "proposal not found" }, { status: 404 });
+      if (!proposal) return notFound("proposal");
       if (proposal.status !== "pending") {
         return HttpResponse.json({ detail: `proposal is already ${proposal.status}` }, { status: 409 });
       }
-      const { decision } = await request.json();
+      const { decision, args } = await request.json();
+      if (decision === "edit" && !args) return HttpResponse.json({ detail: "an edit decision needs args" }, { status: 422 });
       proposal.decided_at = nowIso();
       if (decision === "reject") {
         proposal.status = "rejected";
       } else {
+        if (decision === "edit") {
+          proposal.args = args!;
+          proposal.title = `${proposal.tool === "create_task" ? "Task" : "Reminder"}: ${args!.title ?? args!.text}`;
+        }
+        proposal.result = execute(proposal, proposal.args);
         proposal.status = "executed";
-        proposal.result = "Reminder set (mock).";
-        const args = proposal.args as { text: string; due_at: string };
-        db.reminders.push({
-          id: newId(),
-          text: args.text,
-          due_at: args.due_at,
-          recurrence: null,
-          status: "scheduled",
-          created_at: nowIso(),
-          sent_at: null,
-        });
       }
       return HttpResponse.json(proposal);
     },
   ),
 
+  // --- today & reminders ---
   http.get("*/api/reminders", () => HttpResponse.json(db.reminders)),
-
   http.post<{ id: string }>("*/api/reminders/:id/cancel", ({ params }) => {
     const reminder = db.reminders.find((r) => r.id === params.id);
-    if (!reminder) return HttpResponse.json({ detail: "reminder not found" }, { status: 404 });
+    if (!reminder) return notFound("reminder");
     reminder.status = "cancelled";
     return HttpResponse.json(reminder);
   }),
-
   http.get("*/api/today", () =>
     HttpResponse.json<TodayOut>({
       date: new Date().toISOString().slice(0, 10),
       timezone: "America/Toronto",
       reminders: db.reminders.filter((r) => r.status === "scheduled"),
-      tasks: db.tasks,
+      tasks: db.tasks.filter((t) => t.horizon === "week" && !t.done),
       pending_proposals: db.proposals.filter((p) => p.status === "pending"),
     }),
   ),
+
+  // --- tasks ---
+  http.get("*/api/tasks", ({ request }) => {
+    const horizon = new URL(request.url).searchParams.get("horizon");
+    return HttpResponse.json(db.tasks.filter((t) => !horizon || t.horizon === horizon));
+  }),
+  http.post<never, { title: string; horizon: Task["horizon"] }>("*/api/tasks", async ({ request }) => {
+    const body = await request.json();
+    const task: Task = { id: newId(), title: body.title, horizon: body.horizon ?? "week", folder_id: null, due_at: null, done: false, created_at: nowIso() };
+    db.tasks.push(task);
+    return HttpResponse.json(task, { status: 201 });
+  }),
+  http.patch<{ id: string }, Partial<Task>>("*/api/tasks/:id", async ({ params, request }) => {
+    const task = db.tasks.find((t) => t.id === params.id);
+    if (!task) return notFound("task");
+    Object.assign(task, await request.json());
+    return HttpResponse.json(task);
+  }),
+
+  // --- folders & items ---
+  http.get("*/api/folders", () => HttpResponse.json(db.folders)),
+  http.post<never, { name: string; fields: Folder["fields"] }>("*/api/folders", async ({ request }) => {
+    const body = await request.json();
+    const folder: Folder = { id: newId(), name: body.name, kind: "custom", fields: body.fields ?? [], created_at: nowIso() };
+    db.folders.push(folder);
+    return HttpResponse.json(folder, { status: 201 });
+  }),
+  http.get<{ id: string }>("*/api/folders/:id/items", ({ params }) =>
+    db.folders.some((f) => f.id === params.id)
+      ? HttpResponse.json(db.items.filter((i) => i.folder_id === params.id))
+      : notFound("folder"),
+  ),
+  http.post<{ id: string }, { title: string; fields: Record<string, unknown> }>(
+    "*/api/folders/:id/items",
+    async ({ params, request }) => {
+      if (!db.folders.some((f) => f.id === params.id)) return notFound("folder");
+      const body = await request.json();
+      const item: Item = { id: newId(), folder_id: params.id, title: body.title, fields: body.fields, source: "manual", created_at: nowIso() };
+      db.items.push(item);
+      return HttpResponse.json(item, { status: 201 });
+    },
+  ),
+
+  // --- memory ---
+  http.get("*/api/memory/suggestions", () => HttpResponse.json(db.suggestions.filter((s) => s.status === "pending"))),
+  http.post<{ id: string }, { decision: "approve" | "reject" }>(
+    "*/api/memory/suggestions/:id/decision",
+    async ({ params, request }) => {
+      const suggestion = db.suggestions.find((s) => s.id === params.id);
+      if (!suggestion) return notFound("suggestion");
+      const { decision } = await request.json();
+      suggestion.status = decision === "approve" ? "approved" : "rejected";
+      if (decision === "approve") {
+        db.facts.unshift({ id: newId(), text: suggestion.text, source: suggestion.source, created_at: nowIso() });
+      }
+      return HttpResponse.json(suggestion);
+    },
+  ),
+  http.get("*/api/memory/facts", () => HttpResponse.json(db.facts)),
+  http.delete<{ id: string }>("*/api/memory/facts/:id", ({ params }) => {
+    const before = db.facts.length;
+    db.facts = db.facts.filter((f) => f.id !== params.id);
+    return db.facts.length < before ? new HttpResponse(null, { status: 204 }) : notFound("fact");
+  }),
+  http.get("*/api/export", () =>
+    HttpResponse.json({
+      exported_at: nowIso(),
+      folders: db.folders,
+      items: db.items,
+      tasks: db.tasks,
+      reminders: db.reminders,
+      facts: db.facts,
+      suggestions: db.suggestions,
+      proposals: db.proposals,
+      chat_sessions: [],
+      chat_messages: [],
+      audit: [],
+    }),
+  ),
+
+  // --- settings ---
+  http.get("*/api/settings/notifications", () => HttpResponse.json(db.settings)),
+  http.put<never, NotificationSettings>("*/api/settings/notifications", async ({ request }) => {
+    db.settings = await request.json();
+    return HttpResponse.json(db.settings);
+  }),
 ];

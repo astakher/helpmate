@@ -1,34 +1,47 @@
 import { NavLink, Route, Routes } from "react-router";
 import { useHealth, usePendingProposals } from "./api/queries";
 import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
+import { AuthGate } from "./features/auth/AuthGate";
 import { ChatPage } from "./features/chat/ChatPage";
+import { FolderPage } from "./features/folders/FolderPage";
+import { FoldersPage } from "./features/folders/FoldersPage";
+import { MemoryPage } from "./features/memory/MemoryPage";
+import { SettingsPage } from "./features/settings/SettingsPage";
 import { StatusPage } from "./features/status/StatusPage";
+import { TasksPage } from "./features/tasks/TasksPage";
 import { TodayPage } from "./features/today/TodayPage";
 
 export function App() {
   return (
-    <div className="shell">
-      <a className="skip-link" href="#main">
-        Skip to content
-      </a>
-      <header className="topbar">
-        <span className="brand" aria-hidden="true">
-          HelpMate
-        </span>
-        <Nav />
-        <FakeChip />
-      </header>
-      <main id="main" className="main">
-        <Routes>
-          <Route path="/" element={<ChatPage />} />
-          <Route path="/approvals" element={<ApprovalsPage />} />
-          <Route path="/today" element={<TodayPage />} />
-          <Route path="/reminders" element={<TodayPage />} />
-          <Route path="/status" element={<StatusPage />} />
-          <Route path="*" element={<ChatPage />} />
-        </Routes>
-      </main>
-    </div>
+    <AuthGate>
+      <div className="shell">
+        <a className="skip-link" href="#main">
+          Skip to content
+        </a>
+        <header className="topbar">
+          <span className="brand" aria-hidden="true">
+            HelpMate
+          </span>
+          <FakeChip />
+          <Nav />
+        </header>
+        <main id="main" className="main">
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+            <Route path="/approvals" element={<ApprovalsPage />} />
+            <Route path="/today" element={<TodayPage />} />
+            <Route path="/reminders" element={<TodayPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/folders" element={<FoldersPage />} />
+            <Route path="/folders/:folderId" element={<FolderPage />} />
+            <Route path="/memory" element={<MemoryPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/status" element={<StatusPage />} />
+            <Route path="*" element={<ChatPage />} />
+          </Routes>
+        </main>
+      </div>
+    </AuthGate>
   );
 }
 
@@ -49,6 +62,10 @@ function Nav() {
         )}
       </NavLink>
       <NavLink to="/today">Today</NavLink>
+      <NavLink to="/tasks">Tasks</NavLink>
+      <NavLink to="/folders">Folders</NavLink>
+      <NavLink to="/memory">Memory</NavLink>
+      <NavLink to="/settings">Settings</NavLink>
       <NavLink to="/status">Status</NavLink>
     </nav>
   );

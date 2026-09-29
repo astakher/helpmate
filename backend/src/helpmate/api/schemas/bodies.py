@@ -17,6 +17,7 @@ from helpmate.domain.models import (
     Proposal,
     PushKeys,
     Reminder,
+    Risk,
     Source,
     Task,
 )
@@ -38,6 +39,17 @@ class HealthOut(Body):
     status: Literal["ok"] = "ok"
     version: str
     adapters: dict[str, AdapterInfo]
+
+
+# --- tools ---
+
+
+class ToolInfo(Body):
+    name: str
+    description: str
+    read_only: bool
+    risk: Risk
+    parameters: dict[str, Any]  # JSON Schema of the arguments; the Edit form is built from it
 
 
 # --- auth ---
