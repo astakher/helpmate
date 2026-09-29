@@ -63,7 +63,9 @@ cd web; npm install; cd ..
 
 ```powershell
 ./scripts/dev.ps1                 # backend :8000, speech :8001, web :5173 (all fakes by default)
+./scripts/dev.ps1 -Mock           # web only, MSW mocks (no backend)
 ```
+If Windows says *running scripts is disabled*, run this once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. Or use `powershell -ExecutionPolicy Bypass -File scripts\dev.ps1` each time.
 
 To use real components, edit `.env`, one seam at a time:
 

@@ -1,0 +1,46 @@
+# Core-plane data services. Owned by Workstream B; bootstrapped in week 1.
+#
+#   docker compose --env-file .env -f infra/docker-compose.yml up -d      (from the repo root)
+#
+# Every port is bound to 127.0.0.1: Docker on Windows otherwise publishes on 0.0.0.0, which would
+# expose the database to the LAN. Ollama is NOT here; it runs natively on the host for GPU access.
+
+name: helpmate
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-helpmate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-helpmate}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  seaweedfs:
+    # Single-node S3-compatible store; the image's default command is `weed mini -dir=/data`.
+    # TODO(B): pin a version tag once chosen.
+    image: chrislusf/seaweedfs:latest
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-helpmate}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-change-me-too}
+      S3_BUCKET: ${S3_BUCKET:-helpmate}
+    ports:
+      - "127.0.0.1:8333:8333"   # S3 API
+      - "127.0.0.1:23646:23646" # admin UI
+    volumes:
+      - seaweed:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  seaweed:

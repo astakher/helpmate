@@ -92,7 +92,7 @@ helpmate/
 - proposals: `GET /api/proposals?status=pending`, `POST /api/proposals/{id}/decision`
 - organize: `GET/POST /api/folders`, `GET /api/folders/{id}/items`, `GET/PATCH /api/tasks?horizon=week|term|year|someday`, `GET /api/reminders`, `GET /api/today`
 - memory: `GET /api/memory/suggestions`, `POST /api/memory/suggestions/{id}/decision`, `GET/DELETE /api/memory/facts`, `GET /api/export`
-- voice (C): `POST /api/voice/transcribe` (multipart) → `{text, language, duration_ms, stt_ms}`; `POST /api/voice/speak {text, voice?}` → `audio/wav`
+- voice (C): `POST /api/voice/transcribe` (raw audio body, `Content-Type: audio/webm|mp4|ogg|wav`; never multipart, so nothing spools to disk) → `{text, language, duration_ms, stt_ms}`; `POST /api/voice/speak {text, voice?}` → `audio/wav`
 - push (C): `GET /api/push/vapid-public-key`, `POST/DELETE /api/push/subscriptions`, `POST /api/push/test`, `POST /api/push/ack {notification_id, received_at}`
 - settings (C): `GET/PUT /api/settings/notifications {quiet_hours{start,end,tz}, max_per_hour, private_previews}`
 - audit (B): `GET /api/audit` · health: `GET /api/health`

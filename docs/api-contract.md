@@ -27,6 +27,12 @@ data: <ChatEvent JSON>
 
 The server sends a `: ping` comment every 15 s so proxies (Tailscale) keep the stream open.
 
+## Voice upload
+`POST /api/voice/transcribe` takes the recording as a **raw request body** (`Content-Type: audio/webm;codecs=opus`, `audio/mp4`, …), not multipart form data. Starlette spools multipart files larger than 1 MB to a temp file on disk, whereas a raw body stays in memory and is dropped after transcription. That's how the "recordings are never stored" promise holds.
+
+## Push payload (backend → service worker)
+`WebPushNotifier` sends JSON `{id, kind, title, body, url, tag}`. `web/src/sw.ts` shows it and POSTs `/api/push/ack {notification_id: id, received_at}`, so `received_at - due_at` is the delivery latency.
+
 ## Change rules
 - Additive changes (a new endpoint, optional field or event type) are fine with the normal review, but mention them in the PR.
 - Breaking changes (rename, remove, type change, required field) need all three members to agree first, and they stop being allowed after week 2.
