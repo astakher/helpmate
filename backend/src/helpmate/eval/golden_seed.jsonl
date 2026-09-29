@@ -1,0 +1,15 @@
+{"id": "rem-at", "prompt": "Remind me to call mom at 5pm", "tool": "create_reminder", "checks": {"text~": "mom", "due_local": "+0 17:00"}}
+{"id": "rem-in", "prompt": "remind me in 10 minutes to take the laundry out", "tool": "create_reminder", "checks": {"text~": "laundry", "due_in_minutes": 10}}
+{"id": "rem-tomorrow", "prompt": "Can you set a reminder for tomorrow at 9am to submit the lab report?", "tool": "create_reminder", "checks": {"text~": "lab report", "due_local": "+1 09:00"}}
+{"id": "rem-hours", "prompt": "In two hours remind me to stretch", "tool": "create_reminder", "checks": {"text~": "stretch", "due_in_minutes": 120}}
+{"id": "rem-recurring", "prompt": "Remind me every Monday at 8am to plan my week", "tool": "create_reminder", "checks": {"text~": "plan", "recurrence~": "MO"}}
+{"id": "task-term", "prompt": "Add a task to read chapter 3 of the OS textbook this term", "tool": "create_task", "checks": {"title~": "chapter 3", "horizon": "term"}}
+{"id": "task-someday", "prompt": "I need to renew my passport someday, put it on my list", "tool": "create_task", "checks": {"title~": "passport", "horizon": "someday"}}
+{"id": "task-week", "prompt": "Put 'finish capstone slides' on my list for this week", "tool": "create_task", "checks": {"title~": "capstone", "horizon": "week"}}
+{"id": "task-default", "prompt": "add task buy groceries", "tool": "create_task", "checks": {"title~": "groceries"}}
+{"id": "list-1", "prompt": "What reminders do I have?", "tool": "list_reminders", "checks": {}}
+{"id": "list-2", "prompt": "Show me my upcoming reminders", "tool": "list_reminders", "checks": {}}
+{"id": "chat-greeting", "prompt": "Hi! How are you today?", "tool": null, "checks": {}}
+{"id": "chat-fact", "prompt": "What's the capital of Canada?", "tool": null, "checks": {}}
+{"id": "chat-explain", "prompt": "Explain the PARA method for organizing notes in one sentence.", "tool": null, "checks": {}}
+{"id": "chat-negation", "prompt": "Don't set any reminders, just tell me a short joke", "tool": null, "checks": {}}

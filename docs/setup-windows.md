@@ -47,6 +47,12 @@ This covers the machine that runs inference. Steps marked **(once)** only need d
    ollama ps          # PROCESSOR column must say "100% GPU"
    ```
    If it says CPU, update the NVIDIA driver and reinstall Ollama from the official site.
+5. **Run the model benchmark** after step 3 below, once the code is cloned. It takes about 5 minutes and writes `docs/benchmarks/<machine>.md`; commit that file:
+   ```powershell
+   cd backend
+   uv run helpmate-bench --models llama3.2:3b qwen3:4b
+   ```
+   It reports load time, GPU % (anything under 100 means the model spilled to the CPU), VRAM, time to first token, tokens/s and tool-calling accuracy on 15 seed prompts. **Tool choice** is whether the model picked the right tool. **Args valid (strict)** is whether its arguments passed HelpMate's validation exactly as sent. **Args correct** is whether the content and time were right, even without a UTC offset. A big gap between the last two means the model gets the time right but leaves off the UTC offset, which tells A to accept local times in the tool arguments.
 
 ## 3. Get the code
 

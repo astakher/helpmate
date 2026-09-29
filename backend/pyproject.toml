@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 helpmate-api = "helpmate.main:run"
+helpmate-bench = "helpmate.eval.bench:main"
 
 [build-system]
 requires = ["uv_build>=0.12.20,<0.13.0"]
