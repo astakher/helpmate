@@ -1,0 +1,105 @@
+"""Real adapters against mocked HTTP: no Ollama or speech service needed."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+
+import httpx
+import pytest
+
+from helpmate.adapters.ollama_llm import OllamaLLM, OllamaUnavailable
+from helpmate.adapters.speech_http import HttpSTT, SpeechServiceUnavailable
+from helpmate.api.sse import sse_stream
+from helpmate.domain.events import MessageDelta
+from helpmate.domain.models import LLMMessage, ToolSpec
+
+
+def _ndjson(*objects: dict) -> bytes:
+    return b"\n".join(json.dumps(o).encode() for o in objects) + b"\n"
+
+
+async def test_ollama_streams_text_and_tool_calls():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            content=_ndjson(
+                {"message": {"role": "assistant", "content": "Hel"}, "done": False},
+                {"message": {"role": "assistant", "content": "lo"}, "done": False},
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {"function": {"name": "create_task", "arguments": {"title": "x"}}}
+                        ],
+                    },
+                    "done": True,
+                    "prompt_eval_count": 12,
+                    "eval_count": 3,
+                },
+            ),
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://ollama")
+    llm = OllamaLLM(client, "llama3.2:3b", think=False)
+    tool = ToolSpec(name="create_task", description="d", parameters={"type": "object"})
+    chunks = [c async for c in llm.chat([LLMMessage(role="user", content="hi")], [tool])]
+
+    assert "".join(c.text for c in chunks) == "Hello"
+    assert chunks[-1].tool_calls[0].name == "create_task"
+    assert chunks[-1].output_tokens == 3
+    assert seen["model"] == "llama3.2:3b" and seen["stream"] is True and seen["think"] is False
+    assert seen["tools"][0]["function"]["name"] == "create_task"
+    assert llm.name == "ollama:llama3.2:3b" and not llm.is_fake
+
+
+async def test_ollama_down_gives_a_helpful_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://ollama")
+    with pytest.raises(OllamaUnavailable, match="Is it running"):
+        async for _ in OllamaLLM(client, "m").chat([LLMMessage(role="user", content="hi")]):
+            pass
+
+
+async def test_http_stt_sends_raw_audio():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["type"] = request.headers["content-type"]
+        seen["body"] = request.content
+        seen["language"] = request.url.params.get("language")
+        return httpx.Response(
+            200, json={"text": "hi", "language": "en", "duration_ms": 900, "stt_ms": 300}
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://speech")
+    transcript = await HttpSTT(client).transcribe(b"opus-bytes", "audio/webm;codecs=opus", "en")
+    assert transcript.text == "hi" and transcript.stt_ms == 300
+    assert seen == {"type": "audio/webm;codecs=opus", "body": b"opus-bytes", "language": "en"}
+
+
+async def test_http_stt_down():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://speech")
+    with pytest.raises(SpeechServiceUnavailable):
+        await HttpSTT(client).transcribe(b"x", "audio/webm")
+
+
+async def test_sse_heartbeat_and_error_frames():
+    async def slow_then_fail():
+        await asyncio.sleep(0.05)
+        yield MessageDelta(text="hi")
+        raise RuntimeError("model crashed")
+
+    frames = [f async for f in sse_stream(slow_then_fail(), ping_seconds=0.01)]
+    assert frames[0] == ": ping\n\n"
+    assert any(f.startswith("event: message.delta") for f in frames)
+    assert frames[-1].startswith("event: error") and "model crashed" in frames[-1]

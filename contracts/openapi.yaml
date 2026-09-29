@@ -1,0 +1,2092 @@
+openapi: 3.1.0
+info:
+  title: HelpMate API
+  version: 0.1.0
+paths:
+  /api/health:
+    get:
+      tags:
+      - health
+      summary: Health
+      description: 'Which adapter is plugged into each seam: the System status page reads this.'
+      operationId: health_api_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOut'
+  /api/chat/sessions:
+    get:
+      tags:
+      - chat
+      summary: List Sessions
+      operationId: list_sessions_api_chat_sessions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ChatSession'
+                type: array
+                title: Response List Sessions Api Chat Sessions Get
+    post:
+      tags:
+      - chat
+      summary: Create Session
+      operationId: create_session_api_chat_sessions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionIn'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/chat/sessions/{session_id}/messages:
+    get:
+      tags:
+      - chat
+      summary: List Messages
+      operationId: list_messages_api_chat_sessions__session_id__messages_get
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMessage'
+                title: Response List Messages Api Chat Sessions  Session Id  Messages Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - chat
+      summary: Post Message
+      operationId: post_message_api_chat_sessions__session_id__messages_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostMessageIn'
+      responses:
+        '200':
+          description: 'Server-sent events. Each frame is `event: <type>` + `data: <ChatEvent JSON>`;
+            `: ping` comments are heartbeats.'
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ChatEvent'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/proposals:
+    get:
+      tags:
+      - proposals
+      summary: List Proposals
+      operationId: list_proposals_api_proposals_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/ProposalStatus'
+          - type: 'null'
+          title: Status
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Proposal'
+                title: Response List Proposals Api Proposals Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/proposals/{proposal_id}:
+    get:
+      tags:
+      - proposals
+      summary: Get Proposal
+      operationId: get_proposal_api_proposals__proposal_id__get
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proposal'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/proposals/{proposal_id}/decision:
+    post:
+      tags:
+      - proposals
+      summary: Decide
+      description: Approve, edit-then-approve, or reject. The only way an agent write ever executes.
+      operationId: decide_api_proposals__proposal_id__decision_post
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proposal'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/folders:
+    get:
+      tags:
+      - organize
+      summary: List Folders
+      operationId: list_folders_api_folders_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Folder'
+                type: array
+                title: Response List Folders Api Folders Get
+    post:
+      tags:
+      - organize
+      summary: Create Folder
+      operationId: create_folder_api_folders_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFolderIn'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/folders/{folder_id}/items:
+    get:
+      tags:
+      - organize
+      summary: List Items
+      operationId: list_items_api_folders__folder_id__items_get
+      parameters:
+      - name: folder_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Folder Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+                title: Response List Items Api Folders  Folder Id  Items Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - organize
+      summary: Create Item
+      operationId: create_item_api_folders__folder_id__items_post
+      parameters:
+      - name: folder_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Folder Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/tasks:
+    get:
+      tags:
+      - organize
+      summary: List Tasks
+      operationId: list_tasks_api_tasks_get
+      parameters:
+      - name: horizon
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Horizon'
+          - type: 'null'
+          title: Horizon
+      - name: done
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Done
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+                title: Response List Tasks Api Tasks Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - organize
+      summary: Create Task
+      operationId: create_task_api_tasks_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/tasks/{task_id}:
+    patch:
+      tags:
+      - organize
+      summary: Update Task
+      operationId: update_task_api_tasks__task_id__patch
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchTaskIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/reminders:
+    get:
+      tags:
+      - organize
+      summary: List Reminders
+      operationId: list_reminders_api_reminders_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/ReminderStatus'
+          - type: 'null'
+          title: Status
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reminder'
+                title: Response List Reminders Api Reminders Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/reminders/{reminder_id}/cancel:
+    post:
+      tags:
+      - organize
+      summary: Cancel Reminder
+      operationId: cancel_reminder_api_reminders__reminder_id__cancel_post
+      parameters:
+      - name: reminder_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Reminder Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/today:
+    get:
+      tags:
+      - organize
+      summary: Today
+      operationId: today_api_today_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayOut'
+  /api/memory/suggestions:
+    get:
+      tags:
+      - memory
+      summary: List Suggestions
+      operationId: list_suggestions_api_memory_suggestions_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SuggestionStatus'
+          - type: 'null'
+          default: pending
+          title: Status
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemorySuggestion'
+                title: Response List Suggestions Api Memory Suggestions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/memory/suggestions/{suggestion_id}/decision:
+    post:
+      tags:
+      - memory
+      summary: Decide Suggestion
+      operationId: decide_suggestion_api_memory_suggestions__suggestion_id__decision_post
+      parameters:
+      - name: suggestion_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Suggestion Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestionDecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemorySuggestion'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/memory/facts:
+    get:
+      tags:
+      - memory
+      summary: List Facts
+      operationId: list_facts_api_memory_facts_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/MemoryFact'
+                type: array
+                title: Response List Facts Api Memory Facts Get
+  /api/memory/facts/{fact_id}:
+    delete:
+      tags:
+      - memory
+      summary: Delete Fact
+      operationId: delete_fact_api_memory_facts__fact_id__delete
+      parameters:
+      - name: fact_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Fact Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/export:
+    get:
+      tags:
+      - memory
+      summary: Export Everything
+      operationId: export_everything_api_export_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportOut'
+  /api/voice/transcribe:
+    post:
+      tags:
+      - voice
+      summary: Transcribe
+      operationId: transcribe_api_voice_transcribe_post
+      parameters:
+      - name: language
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcript'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          audio/webm:
+            schema:
+              type: string
+              format: binary
+          audio/mp4:
+            schema:
+              type: string
+              format: binary
+          audio/ogg:
+            schema:
+              type: string
+              format: binary
+          audio/wav:
+            schema:
+              type: string
+              format: binary
+          audio/mpeg:
+            schema:
+              type: string
+              format: binary
+  /api/voice/speak:
+    post:
+      tags:
+      - voice
+      summary: Speak
+      operationId: speak_api_voice_speak_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeakIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/push/vapid-public-key:
+    get:
+      tags:
+      - push
+      summary: Vapid Public Key
+      operationId: vapid_public_key_api_push_vapid_public_key_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapidKeyOut'
+  /api/push/subscriptions:
+    post:
+      tags:
+      - push
+      summary: Subscribe
+      operationId: subscribe_api_push_subscriptions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionIn'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - push
+      summary: Unsubscribe
+      operationId: unsubscribe_api_push_subscriptions_delete
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnsubscribeIn'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/push/test:
+    post:
+      tags:
+      - push
+      summary: Send Test
+      operationId: send_test_api_push_test_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResult'
+  /api/push/ack:
+    post:
+      tags:
+      - push
+      summary: Ack
+      description: 'Called by the service worker when a push arrives: this is how latency gets measured.'
+      operationId: ack_api_push_ack_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckIn'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/push/deliveries:
+    get:
+      tags:
+      - push
+      summary: Deliveries
+      operationId: deliveries_api_push_deliveries_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Delivery'
+                type: array
+                title: Response Deliveries Api Push Deliveries Get
+  /api/settings/notifications:
+    get:
+      tags:
+      - settings
+      summary: Get Notification Settings
+      operationId: get_notification_settings_api_settings_notifications_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+    put:
+      tags:
+      - settings
+      summary: Put Notification Settings
+      operationId: put_notification_settings_api_settings_notifications_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSettings'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/audit:
+    get:
+      tags:
+      - audit
+      summary: List Audit
+      operationId: list_audit_api_audit_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntry'
+                title: Response List Audit Api Audit Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auth/login:
+    post:
+      tags:
+      - auth
+      summary: Login
+      operationId: login_api_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auth/mfa:
+    post:
+      tags:
+      - auth
+      summary: Verify Mfa
+      operationId: verify_mfa_api_auth_mfa_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MfaIn'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auth/mfa/enroll:
+    post:
+      tags:
+      - auth
+      summary: Enroll Mfa
+      operationId: enroll_mfa_api_auth_mfa_enroll_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MfaEnrollOut'
+  /api/auth/logout:
+    post:
+      tags:
+      - auth
+      summary: Logout
+      operationId: logout_api_auth_logout_post
+      responses:
+        '204':
+          description: Successful Response
+  /api/me:
+    get:
+      tags:
+      - auth
+      summary: Me
+      operationId: me_api_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    AckIn:
+      properties:
+        notification_id:
+          type: string
+          title: Notification Id
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+      additionalProperties: false
+      type: object
+      required:
+      - notification_id
+      - received_at
+      title: AckIn
+    Actor:
+      type: string
+      enum:
+      - user
+      - agent
+      - system
+      title: Actor
+    AdapterInfo:
+      properties:
+        name:
+          type: string
+          title: Name
+        fake:
+          type: boolean
+          title: Fake
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - fake
+      title: AdapterInfo
+    AuditEntry:
+      properties:
+        id:
+          type: string
+          title: Id
+        at:
+          type: string
+          format: date-time
+          title: At
+        actor:
+          $ref: '#/components/schemas/Actor'
+        action:
+          type: string
+          title: Action
+        target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target
+        detail:
+          additionalProperties: true
+          type: object
+          title: Detail
+          default: {}
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - at
+      - actor
+      - action
+      title: AuditEntry
+    ChatMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        session_id:
+          type: string
+          title: Session Id
+        role:
+          $ref: '#/components/schemas/Role'
+        text:
+          type: string
+          title: Text
+        source:
+          type: string
+          enum:
+          - text
+          - voice
+          title: Source
+          default: text
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - session_id
+      - role
+      - text
+      - created_at
+      title: ChatMessage
+    ChatSession:
+      properties:
+        id:
+          type: string
+          title: Id
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - created_at
+      title: ChatSession
+    CreateFolderIn:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        fields:
+          items:
+            $ref: '#/components/schemas/FieldDef'
+          type: array
+          title: Fields
+          default: []
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: CreateFolderIn
+    CreateItemIn:
+      properties:
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        fields:
+          additionalProperties: true
+          type: object
+          title: Fields
+          default: {}
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      title: CreateItemIn
+    CreateSessionIn:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Title
+      additionalProperties: false
+      type: object
+      title: CreateSessionIn
+    CreateTaskIn:
+      properties:
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        horizon:
+          $ref: '#/components/schemas/Horizon'
+          default: week
+        folder_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Folder Id
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due At
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      title: CreateTaskIn
+    DecisionIn:
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+          - edit
+          title: Decision
+        args:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Args
+      additionalProperties: false
+      type: object
+      required:
+      - decision
+      title: DecisionIn
+    Delivery:
+      properties:
+        notification_id:
+          type: string
+          title: Notification Id
+        kind:
+          $ref: '#/components/schemas/NotificationKind'
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due At
+        sent_at:
+          type: string
+          format: date-time
+          title: Sent At
+        received_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Received At
+      additionalProperties: false
+      type: object
+      required:
+      - notification_id
+      - kind
+      - sent_at
+      title: Delivery
+      description: Delivery record used to measure the 'reminder reaches the phone within 60 s' target.
+    DeliveryResult:
+      properties:
+        notification_id:
+          type: string
+          title: Notification Id
+        delivered:
+          type: integer
+          title: Delivered
+        deferred:
+          type: boolean
+          title: Deferred
+          default: false
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+      - notification_id
+      - delivered
+      title: DeliveryResult
+    ExportOut:
+      properties:
+        exported_at:
+          type: string
+          format: date-time
+          title: Exported At
+        folders:
+          items:
+            $ref: '#/components/schemas/Folder'
+          type: array
+          title: Folders
+        items:
+          items:
+            $ref: '#/components/schemas/Item'
+          type: array
+          title: Items
+        tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Tasks
+        reminders:
+          items:
+            $ref: '#/components/schemas/Reminder'
+          type: array
+          title: Reminders
+        facts:
+          items:
+            $ref: '#/components/schemas/MemoryFact'
+          type: array
+          title: Facts
+        suggestions:
+          items:
+            $ref: '#/components/schemas/MemorySuggestion'
+          type: array
+          title: Suggestions
+        proposals:
+          items:
+            $ref: '#/components/schemas/Proposal'
+          type: array
+          title: Proposals
+        chat_sessions:
+          items:
+            $ref: '#/components/schemas/ChatSession'
+          type: array
+          title: Chat Sessions
+        chat_messages:
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          type: array
+          title: Chat Messages
+        audit:
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+          type: array
+          title: Audit
+      additionalProperties: false
+      type: object
+      required:
+      - exported_at
+      - folders
+      - items
+      - tasks
+      - reminders
+      - facts
+      - suggestions
+      - proposals
+      - chat_sessions
+      - chat_messages
+      - audit
+      title: ExportOut
+    FieldDef:
+      properties:
+        key:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,39}$
+          title: Key
+        label:
+          type: string
+          title: Label
+        type:
+          $ref: '#/components/schemas/FieldType'
+          default: text
+        options:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Options
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - label
+      title: FieldDef
+    FieldType:
+      type: string
+      enum:
+      - text
+      - number
+      - date
+      - select
+      - rating
+      - bool
+      title: FieldType
+    Folder:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        kind:
+          $ref: '#/components/schemas/FolderKind'
+          default: custom
+        fields:
+          items:
+            $ref: '#/components/schemas/FieldDef'
+          type: array
+          title: Fields
+          default: []
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - created_at
+      title: Folder
+    FolderKind:
+      type: string
+      enum:
+      - para
+      - custom
+      title: FolderKind
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthOut:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+          default: ok
+        version:
+          type: string
+          title: Version
+        adapters:
+          additionalProperties:
+            $ref: '#/components/schemas/AdapterInfo'
+          type: object
+          title: Adapters
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      - adapters
+      title: HealthOut
+    Horizon:
+      type: string
+      enum:
+      - week
+      - term
+      - year
+      - someday
+      title: Horizon
+    Item:
+      properties:
+        id:
+          type: string
+          title: Id
+        folder_id:
+          type: string
+          title: Folder Id
+        title:
+          type: string
+          title: Title
+        fields:
+          additionalProperties: true
+          type: object
+          title: Fields
+          default: {}
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - folder_id
+      - title
+      - created_at
+      title: Item
+    LoginIn:
+      properties:
+        username:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Username
+        password:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Password
+      additionalProperties: false
+      type: object
+      required:
+      - username
+      - password
+      title: LoginIn
+    LoginOut:
+      properties:
+        mfa_required:
+          type: boolean
+          title: Mfa Required
+        challenge_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Challenge Id
+      additionalProperties: false
+      type: object
+      required:
+      - mfa_required
+      title: LoginOut
+    MemoryFact:
+      properties:
+        id:
+          type: string
+          title: Id
+        text:
+          type: string
+          title: Text
+        source:
+          type: string
+          title: Source
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - text
+      - source
+      - created_at
+      title: MemoryFact
+    MemorySuggestion:
+      properties:
+        id:
+          type: string
+          title: Id
+        text:
+          type: string
+          title: Text
+        source:
+          type: string
+          title: Source
+        status:
+          $ref: '#/components/schemas/SuggestionStatus'
+          default: pending
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - text
+      - source
+      - created_at
+      title: MemorySuggestion
+      description: A fact the agent noticed. Stored as a MemoryFact only if the owner approves it.
+    MfaEnrollOut:
+      properties:
+        otpauth_uri:
+          type: string
+          title: Otpauth Uri
+      additionalProperties: false
+      type: object
+      required:
+      - otpauth_uri
+      title: MfaEnrollOut
+    MfaIn:
+      properties:
+        challenge_id:
+          type: string
+          title: Challenge Id
+        code:
+          type: string
+          pattern: ^\d{6}$
+          title: Code
+      additionalProperties: false
+      type: object
+      required:
+      - challenge_id
+      - code
+      title: MfaIn
+    NotificationKind:
+      type: string
+      enum:
+      - reminder
+      - brief
+      - system
+      - test
+      title: NotificationKind
+    NotificationSettings:
+      properties:
+        quiet_hours:
+          anyOf:
+          - $ref: '#/components/schemas/QuietHours'
+          - type: 'null'
+        timezone:
+          type: string
+          title: Timezone
+          default: America/Toronto
+        max_per_hour:
+          type: integer
+          maximum: 60.0
+          minimum: 1.0
+          title: Max Per Hour
+          default: 6
+        private_previews:
+          type: boolean
+          title: Private Previews
+          default: false
+      additionalProperties: false
+      type: object
+      title: NotificationSettings
+    PatchTaskIn:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
+          title: Title
+        horizon:
+          anyOf:
+          - $ref: '#/components/schemas/Horizon'
+          - type: 'null'
+        done:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Done
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due At
+      additionalProperties: false
+      type: object
+      title: PatchTaskIn
+    PostMessageIn:
+      properties:
+        text:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Text
+        source:
+          type: string
+          enum:
+          - text
+          - voice
+          title: Source
+          default: text
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      title: PostMessageIn
+    Proposal:
+      properties:
+        id:
+          type: string
+          title: Id
+        session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Session Id
+        tool:
+          type: string
+          title: Tool
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+        args:
+          additionalProperties: true
+          type: object
+          title: Args
+        preview:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Preview
+        risk:
+          $ref: '#/components/schemas/Risk'
+          default: write
+        status:
+          $ref: '#/components/schemas/ProposalStatus'
+          default: pending
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        decided_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Decided At
+        result:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Result
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - tool
+      - title
+      - summary
+      - args
+      - created_at
+      title: Proposal
+      description: A write the agent wants to make. Nothing runs until the owner approves it.
+    ProposalStatus:
+      type: string
+      enum:
+      - pending
+      - approved
+      - rejected
+      - executed
+      - failed
+      title: ProposalStatus
+    PushKeys:
+      properties:
+        p256dh:
+          type: string
+          title: P256Dh
+        auth:
+          type: string
+          title: Auth
+      additionalProperties: false
+      type: object
+      required:
+      - p256dh
+      - auth
+      title: PushKeys
+    QuietHours:
+      properties:
+        start:
+          type: string
+          format: time
+          title: Start
+        end:
+          type: string
+          format: time
+          title: End
+      additionalProperties: false
+      type: object
+      required:
+      - start
+      - end
+      title: QuietHours
+    Reminder:
+      properties:
+        id:
+          type: string
+          title: Id
+        text:
+          type: string
+          title: Text
+        due_at:
+          type: string
+          format: date-time
+          title: Due At
+        recurrence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recurrence
+        status:
+          $ref: '#/components/schemas/ReminderStatus'
+          default: scheduled
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - text
+      - due_at
+      - created_at
+      title: Reminder
+    ReminderStatus:
+      type: string
+      enum:
+      - scheduled
+      - sent
+      - cancelled
+      title: ReminderStatus
+    Risk:
+      type: string
+      enum:
+      - write
+      - external
+      title: Risk
+    Role:
+      type: string
+      enum:
+      - user
+      - assistant
+      title: Role
+    SpeakIn:
+      properties:
+        text:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Text
+        voice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Voice
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      title: SpeakIn
+    SubscriptionIn:
+      properties:
+        endpoint:
+          type: string
+          maxLength: 2000
+          minLength: 10
+          title: Endpoint
+        keys:
+          $ref: '#/components/schemas/PushKeys'
+        user_agent:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: User Agent
+      additionalProperties: false
+      type: object
+      required:
+      - endpoint
+      - keys
+      title: SubscriptionIn
+    SuggestionDecisionIn:
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+          title: Decision
+      additionalProperties: false
+      type: object
+      required:
+      - decision
+      title: SuggestionDecisionIn
+    SuggestionStatus:
+      type: string
+      enum:
+      - pending
+      - approved
+      - rejected
+      title: SuggestionStatus
+    Task:
+      properties:
+        id:
+          type: string
+          title: Id
+        title:
+          type: string
+          title: Title
+        horizon:
+          $ref: '#/components/schemas/Horizon'
+          default: week
+        folder_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Folder Id
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due At
+        done:
+          type: boolean
+          title: Done
+          default: false
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - title
+      - created_at
+      title: Task
+    TodayOut:
+      properties:
+        date:
+          type: string
+          title: Date
+        timezone:
+          type: string
+          title: Timezone
+        reminders:
+          items:
+            $ref: '#/components/schemas/Reminder'
+          type: array
+          title: Reminders
+        tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Tasks
+        pending_proposals:
+          items:
+            $ref: '#/components/schemas/Proposal'
+          type: array
+          title: Pending Proposals
+      additionalProperties: false
+      type: object
+      required:
+      - date
+      - timezone
+      - reminders
+      - tasks
+      - pending_proposals
+      title: TodayOut
+    Transcript:
+      properties:
+        text:
+          type: string
+          title: Text
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        duration_ms:
+          type: integer
+          title: Duration Ms
+        stt_ms:
+          type: integer
+          title: Stt Ms
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      - duration_ms
+      - stt_ms
+      title: Transcript
+    UnsubscribeIn:
+      properties:
+        endpoint:
+          type: string
+          title: Endpoint
+      additionalProperties: false
+      type: object
+      required:
+      - endpoint
+      title: UnsubscribeIn
+    User:
+      properties:
+        id:
+          type: string
+          title: Id
+        display_name:
+          type: string
+          title: Display Name
+        mfa_enabled:
+          type: boolean
+          title: Mfa Enabled
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - display_name
+      title: User
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    VapidKeyOut:
+      properties:
+        public_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Public Key
+      additionalProperties: false
+      type: object
+      required:
+      - public_key
+      title: VapidKeyOut
+    ErrorEvent:
+      properties:
+        type:
+          const: error
+          default: error
+          title: Type
+          type: string
+        code:
+          title: Code
+          type: string
+        message:
+          title: Message
+          type: string
+      required:
+      - code
+      - message
+      title: ErrorEvent
+      type: object
+    MessageDelta:
+      properties:
+        type:
+          const: message.delta
+          default: message.delta
+          title: Type
+          type: string
+        text:
+          title: Text
+          type: string
+      required:
+      - text
+      title: MessageDelta
+      type: object
+    MessageDone:
+      properties:
+        type:
+          const: message.done
+          default: message.done
+          title: Type
+          type: string
+        message_id:
+          title: Message Id
+          type: string
+        ttft_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Ttft Ms
+        tokens:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Tokens
+      required:
+      - message_id
+      title: MessageDone
+      type: object
+    ProposalCreated:
+      properties:
+        type:
+          const: proposal.created
+          default: proposal.created
+          title: Type
+          type: string
+        proposal:
+          $ref: '#/components/schemas/Proposal'
+      required:
+      - proposal
+      title: ProposalCreated
+      type: object
+    ToolResult:
+      properties:
+        type:
+          const: tool.result
+          default: tool.result
+          title: Type
+          type: string
+        call_id:
+          title: Call Id
+          type: string
+        ok:
+          title: Ok
+          type: boolean
+        summary:
+          title: Summary
+          type: string
+      required:
+      - call_id
+      - ok
+      - summary
+      title: ToolResult
+      type: object
+    ToolStarted:
+      properties:
+        type:
+          const: tool.started
+          default: tool.started
+          title: Type
+          type: string
+        call_id:
+          title: Call Id
+          type: string
+        tool:
+          title: Tool
+          type: string
+        args:
+          additionalProperties: true
+          title: Args
+          type: object
+      required:
+      - call_id
+      - tool
+      - args
+      title: ToolStarted
+      type: object
+    ChatEvent:
+      discriminator:
+        mapping:
+          error: '#/components/schemas/ErrorEvent'
+          message.delta: '#/components/schemas/MessageDelta'
+          message.done: '#/components/schemas/MessageDone'
+          proposal.created: '#/components/schemas/ProposalCreated'
+          tool.result: '#/components/schemas/ToolResult'
+          tool.started: '#/components/schemas/ToolStarted'
+        propertyName: type
+      oneOf:
+      - $ref: '#/components/schemas/MessageDelta'
+      - $ref: '#/components/schemas/ToolStarted'
+      - $ref: '#/components/schemas/ToolResult'
+      - $ref: '#/components/schemas/ProposalCreated'
+      - $ref: '#/components/schemas/MessageDone'
+      - $ref: '#/components/schemas/ErrorEvent'
