@@ -24,12 +24,17 @@ def test_openapi_publishes_the_chat_event_union():
 
 @pytest.mark.parametrize(
     ("seam", "choice", "owner"),
-    [("repo", "postgres", "B"), ("agent", "loop", "A"), ("notifier", "webpush", "C")],
+    [("repo", "postgres", "B"), ("auth", "totp", "B"), ("notifier", "webpush", "C")],
 )
 def test_unimplemented_adapters_fail_loudly(seam, choice, owner):
     settings = Settings(_env_file=None, **{seam: choice})
     with pytest.raises(AdapterNotImplemented, match=f"Workstream {owner}"):
         build_container(settings)
+
+
+def test_loop_agent_is_available():  # stand-in for Workstream A's agent loop
+    container = build_container(Settings(_env_file=None, agent="loop"))
+    assert container.agent.name == "loop" and not container.agent.is_fake
 
 
 async def test_prod_mode_serves_the_spa_with_client_side_routes(tmp_path):

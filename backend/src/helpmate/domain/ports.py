@@ -9,9 +9,9 @@ Owner of the real adapter is noted on each port.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from helpmate.domain.events import ChatEvent
 from helpmate.domain.models import (
@@ -70,10 +70,16 @@ class AgentPort(Adapter, Protocol):
 
 
 class LLMPort(Adapter, Protocol):
-    """Chat completion with optional tool calling, streamed. Real impl: Ollama (A)."""
+    """Chat completion with optional tool calling, streamed. Real impl: Ollama (A).
+
+    `json_schema` (added Sep 29, additive): constrain the reply to JSON matching this schema
+    (structured output), e.g. the agent loop's routing step."""
 
     def chat(
-        self, messages: Sequence[LLMMessage], tools: Sequence[ToolSpec] = ()
+        self,
+        messages: Sequence[LLMMessage],
+        tools: Sequence[ToolSpec] = (),
+        json_schema: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[LLMChunk]: ...
 
 

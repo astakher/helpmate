@@ -57,6 +57,20 @@ async def test_ollama_streams_text_and_tool_calls():
     assert llm.name == "ollama:llama3.2:3b" and not llm.is_fake
 
 
+async def test_ollama_structured_output_sends_format():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, content=_ndjson({"message": {"content": "{}"}, "done": True}))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://ollama")
+    schema = {"type": "object", "properties": {"action": {"enum": ["reply"]}}}
+    messages = [LLMMessage(role="user", content="hi")]
+    chunks = [c async for c in OllamaLLM(client, "m").chat(messages, json_schema=schema)]
+    assert seen["format"] == schema and "tools" not in seen and chunks[-1].done
+
+
 async def test_ollama_down_gives_a_helpful_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused", request=request)

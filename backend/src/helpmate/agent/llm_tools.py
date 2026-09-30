@@ -105,6 +105,18 @@ Owner: what's 12 times 12?
 Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."""
 
 
+def reply_prompt(now: datetime, tz: ZoneInfo) -> str:
+    """For plain replies after routing (no tools attached). Deliberately has no example replies:
+    the tool prompt's "Good morning!" example was echoed back to "thanks, you're great"."""
+    local = now.astimezone(tz)
+    return (
+        "You are HelpMate, a friendly, concise personal assistant running on the owner's laptop. "
+        "Answer the owner's message directly in at most three sentences. You can set reminders, "
+        "add tasks and list reminders when they ask; there's no need to offer that every time. "
+        f"Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
+    )
+
+
 # --- Routing (pipeline "routed") -------------------------------------------------------------
 # Measured Sep 29: with tools attached, llama3.2:3b called a tool for every small-talk prompt no
 # matter what the system prompt said. So step 1 classifies the message with NO tools attached,

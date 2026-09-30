@@ -159,6 +159,7 @@ v0.1 = `contracts/openapi.yaml` as committed in `8d5f957`. Every change since mu
 | Date | Change | Kind | Why | Owner |
 |---|---|---|---|---|
 | Sep 2026 (Phase 4, `4d88ea0`) | `GET /api/tools` → `list[ToolInfo]` `{name, description, read_only, risk, parameters}` | additive endpoint + schema | the Edit-then-approve form is built from each tool's JSON Schema | A (stand-in here) |
+| Sep 30 2026 | `LLMPort.chat(..., json_schema=None)` in `domain/ports.py`: optional structured output | additive port parameter (no HTTP change) | the agent loop's routing step classifies messages with no tools attached | A (stand-in here) |
 
 Planned (not built yet): `PATCH /api/memory/facts/{id}` `{text}` → `MemoryFact`, plus
 `MemoryRepo.update_fact`, for the Memory page's Edit button (see the backlog in `CLAUDE.md`).

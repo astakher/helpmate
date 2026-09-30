@@ -149,7 +149,10 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         from helpmate.adapters.ollama_llm import OllamaEmbeddings, OllamaLLM
 
         ollama = http_client(settings.ollama_url, httpx.Timeout(120.0, connect=5.0))
-        llm = OllamaLLM(ollama, settings.ollama_model, think=settings.ollama_think)
+        # temperature 0: routing and tool calls were benchmarked that way (stand-in for A)
+        llm = OllamaLLM(
+            ollama, settings.ollama_model, think=settings.ollama_think, options={"temperature": 0}
+        )
         embeddings = OllamaEmbeddings(ollama, settings.ollama_embed_model)
 
     # --- Speech (C) ---
@@ -171,7 +174,10 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
             policy, llm, repos.memory, clock, settings.tz, settings.fake_stream_delay_seconds
         )
     else:
-        _not_yet("agent", settings.agent)
+        # Stand-in for Workstream A - not part of the Part C deliverable
+        from helpmate.agent.loop import LoopAgent
+
+        agent = LoopAgent(policy, llm, repos.memory, repos.chat, clock, settings.tz)
 
     return Container(
         settings=settings,

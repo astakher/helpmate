@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import math
 import re
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import Any
 
 from helpmate.domain.models import LLMChunk, LLMMessage, ToolSpec
 
@@ -19,8 +21,15 @@ class FakeLLM:
         self._delay = stream_delay
 
     async def chat(
-        self, messages: Sequence[LLMMessage], tools: Sequence[ToolSpec] = ()
+        self,
+        messages: Sequence[LLMMessage],
+        tools: Sequence[ToolSpec] = (),
+        json_schema: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[LLMChunk]:
+        if json_schema is not None:  # structured output: the smallest valid object
+            yield LLMChunk(text=json.dumps(_minimal(json_schema)))
+            yield LLMChunk(done=True, output_tokens=1)
+            return
         last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
         reply = (
             f'(fake LLM) You said: "{last_user}". Set HELPMATE_LLM=ollama to talk to the real '
@@ -32,6 +41,18 @@ class FakeLLM:
                 await asyncio.sleep(self._delay)
             yield LLMChunk(text=piece)
         yield LLMChunk(done=True, output_tokens=len(pieces))
+
+
+def _minimal(schema: Mapping[str, Any]) -> Any:
+    """First enum value / empty value for each required property (e.g. {"action": "reply"})."""
+    if "enum" in schema:
+        return schema["enum"][0]
+    if schema.get("type") == "object":
+        props = schema.get("properties", {})
+        return {k: _minimal(props[k]) for k in schema.get("required", []) if k in props}
+    return {"string": "", "integer": 0, "number": 0, "boolean": False, "array": []}.get(
+        schema.get("type", ""), None
+    )
 
 
 class FakeEmbeddings:

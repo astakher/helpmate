@@ -7,7 +7,7 @@ Ollama must listen on 127.0.0.1 only (OLLAMA_HOST), never on the network.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -36,13 +36,18 @@ class OllamaLLM:
         self.name = f"ollama:{model}"
 
     async def chat(
-        self, messages: Sequence[LLMMessage], tools: Sequence[ToolSpec] = ()
+        self,
+        messages: Sequence[LLMMessage],
+        tools: Sequence[ToolSpec] = (),
+        json_schema: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[LLMChunk]:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [_to_ollama_message(m) for m in messages],
             "stream": True,
         }
+        if json_schema is not None:
+            payload["format"] = dict(json_schema)  # Ollama structured output
         if tools:
             payload["tools"] = [
                 {

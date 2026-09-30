@@ -84,6 +84,10 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   `docs/benchmarks/llama-tool-calling-fixes.md`): time words resolved in code + a no-tools routing
   call → llama3.2:3b **tool choice 100% / 94%, args 100%** on seed / held-out (31 prompts), plain
   reply first word 0.46 s, tool call ~1.5–1.9 s. A prompt rule alone did nothing for small talk.
+- **`HELPMATE_AGENT=loop` works** (stand-in for A, `agent/loop.py`): routing → one tool →
+  `resolve()` + retry once → `PolicyEngine` (cards as before); plain replies use `reply_prompt()`
+  with recent history. Live on the XPS: small talk ≈ 1 s, list ≈ 1.2 s, a reminder card ≈ 2–3 s
+  (mostly ~40 tokens of tool-call JSON at 24 tok/s). `scripted` stays the default in `.env.example`.
 - Next: Phase 5 real voice → Phase 6 Web Push → Phase 7 Tailscale. Midterm video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
@@ -99,8 +103,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - [C] Energy per request: `nvidia-smi` power is N/A on the 1050 Ti Max-Q; plan a wall-meter/HWiNFO or
   demo-host measurement.
 - [C] Phase 8: Playwright E2E (chat → approve → reminder → push ack) + DST test across Nov 1.
-- [A] Adopt the prototyped `llm_tools` routing + `when.py` in the real agent loop; skip the router
-  when `intent_parser` matches (saves ~0.4 s); grow the golden set to ≥ 60; try `qwen3:4b-instruct`.
+- [A] Replace the stand-in `LoopAgent` with A's real loop (it can reuse `llm_tools` + `when.py`);
+  skip the model when `intent_parser` already matches (cards 2–3 s → instant); grow the golden set
+  to ≥ 60; try `qwen3:4b-instruct`.
   (Done as stand-ins: benchmark `rem-at` fix, thinking-model TTFT, held-out set, `--pipeline`.)
 - [A] (stand-in) "permitted" permission tier (empty by default); calendar conflict/free-time tools;
   golden set ≥ 60, recall@5, 10 prompt-injection cases.
