@@ -83,13 +83,22 @@ class RealEngine:
         from kokoro_onnx import Kokoro
 
         started = time.perf_counter()
-        # int8 on CPU: ~0.5 GB RAM for `base`; the model downloads on first use (~145 MB)
-        self._whisper = WhisperModel(
-            settings.whisper_model,
-            device="cpu",
-            compute_type="int8",
-            cpu_threads=settings.cpu_threads,
-        )
+        # int8 on CPU: ~0.5 GB RAM for `base`. local_files_only: never contact the Hugging Face
+        # Hub at run time (the Sep 30 privacy check caught a startup "is there a newer model?"
+        # connection to huggingface.co kept open); scripts/get_models.ps1 downloads the model.
+        try:
+            self._whisper = WhisperModel(
+                settings.whisper_model,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=settings.cpu_threads,
+                local_files_only=True,
+            )
+        except (OSError, ValueError) as exc:  # huggingface_hub's LocalEntryNotFoundError is both
+            raise FileNotFoundError(
+                f"Whisper model {settings.whisper_model!r} isn't downloaded. From the repo root "
+                "run ./scripts/get_models.ps1."
+            ) from exc
         self._kokoro = Kokoro(str(settings.kokoro_model), str(settings.kokoro_voices))
         self._voices = set(self._kokoro.get_voices())
         self._default_voice = (

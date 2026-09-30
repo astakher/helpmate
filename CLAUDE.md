@@ -71,6 +71,8 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   the real engine (`uv run` doesn't). Recordings under ~0.4 s are bare webm headers → 422, not 500.
 - Web Push TLS uses certifi, not the Windows store: Windows fetches roots lazily, and Python lacked
   Apple's (COMODO ECC), so iPhone pushes failed while Chrome's (FCM) worked.
+- faster-whisper must load with `local_files_only=True`: otherwise it asks huggingface.co for a newer
+  model at every start and keeps the connection open (caught by `scripts/privacy_check.py`).
 
 ## Status (update as phases land)
 - Done: Phase 0–2 (repo, CI, contract v0.1, walking skeleton), benchmark script, Phase 4 web
@@ -105,7 +107,11 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - **Phase 7 Tailscale works** (Sep 30): `https://helpmate.<tailnet>.ts.net` via `tailscale serve`
   (tailnet only; funnel off), SSE streams through it. iPhone 15 Pro: PWA from the Home Screen, test
   push shown 1.0 s after sending (needed certifi TLS for web.push.apple.com, see gotchas).
-- Next: Phase 8 (Playwright E2E + DST test across Nov 1), midterm design doc + 3-min video ≈ Oct 26.
+- **Privacy check PASS** (Sep 30, `scripts/privacy_check.py` → `docs/privacy/<host>.md`): during chat,
+  a proposal, a voice round trip and a test push, HelpMate's processes reached only loopback (after
+  fixing Whisper's Hugging Face check), Tailscale devices and push services.
+- Next: Postgres after the reboot (Docker Desktop is installed), Phase 8 Playwright E2E, midterm design
+  doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)

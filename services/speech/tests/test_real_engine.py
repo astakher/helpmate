@@ -32,6 +32,16 @@ def test_missing_models_explain_how_to_get_them(tmp_path):
         load_engine(missing)
 
 
+def test_missing_whisper_model_explains_how_to_get_it():
+    """Whisper loads with local_files_only, so a model that isn't downloaded is a clear error,
+    never a silent download (the privacy check requires no run-time network access)."""
+    if not have_real:
+        pytest.skip("real speech models not installed (./scripts/get_models.ps1)")
+    not_downloaded = "tiny"  # get_models.ps1 fetches only the configured model (base)
+    with pytest.raises(FileNotFoundError, match="get_models.ps1"):
+        load_engine(SpeechSettings(_env_file=None, engine="real", whisper_model=not_downloaded))
+
+
 @pytest.fixture(scope="module")
 def engine():
     if not have_real:
