@@ -1,4 +1,5 @@
-"""Real adapters against mocked HTTP: no Ollama or speech service needed."""
+"""Real adapters against mocked HTTP: no Ollama needed. (Part C's speech adapters are tested in
+test_speech_http.py, so Part C's tests can move to the shared repo on their own.)"""
 
 from __future__ import annotations
 
@@ -9,7 +10,6 @@ import httpx
 import pytest
 
 from helpmate.adapters.ollama_llm import OllamaLLM, OllamaUnavailable
-from helpmate.adapters.speech_http import HttpSTT, SpeechServiceUnavailable
 from helpmate.api.sse import sse_stream
 from helpmate.domain.events import MessageDelta
 from helpmate.domain.models import LLMMessage, ToolSpec
@@ -65,32 +65,6 @@ async def test_ollama_down_gives_a_helpful_error():
     with pytest.raises(OllamaUnavailable, match="Is it running"):
         async for _ in OllamaLLM(client, "m").chat([LLMMessage(role="user", content="hi")]):
             pass
-
-
-async def test_http_stt_sends_raw_audio():
-    seen: dict = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["type"] = request.headers["content-type"]
-        seen["body"] = request.content
-        seen["language"] = request.url.params.get("language")
-        return httpx.Response(
-            200, json={"text": "hi", "language": "en", "duration_ms": 900, "stt_ms": 300}
-        )
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://speech")
-    transcript = await HttpSTT(client).transcribe(b"opus-bytes", "audio/webm;codecs=opus", "en")
-    assert transcript.text == "hi" and transcript.stt_ms == 300
-    assert seen == {"type": "audio/webm;codecs=opus", "body": b"opus-bytes", "language": "en"}
-
-
-async def test_http_stt_down():
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("refused", request=request)
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://speech")
-    with pytest.raises(SpeechServiceUnavailable):
-        await HttpSTT(client).transcribe(b"x", "audio/webm")
 
 
 async def test_sse_heartbeat_and_error_frames():

@@ -128,15 +128,16 @@ helpmate/
 7. `scripts/dev.ps1` starts compose, backend, speech and web in one go. **Checkpoint:** "remind me to call mom at 5pm" → card → approve → log line at 17:00, with all fakes and no GPU. Push to GitHub.
 
 ### Phase 3 — Ollama on the XPS and the model benchmark (week 1, feeds A)
-1. Install Ollama (official installer), check `nvidia-smi`, then pull `llama3.2:3b` (2.0 GB), `qwen3:4b` (2.5 GB, use `think:false`) and `nomic-embed-text` (274 MB, 768-dim). Optionally add `llama3.1:8b` as a CPU-spill comparison. User env vars:
+1. Install Ollama (official installer), check `nvidia-smi`, then pull `llama3.2:3b` (2.0 GB), `qwen3:4b` (2.5 GB; the tag is now the thinking-only 2507 build, which ignores `think:false`, so use `qwen3:4b-instruct` for a non-thinking comparison) and `nomic-embed-text` (274 MB, 768-dim). Optionally add `llama3.1:8b` as a CPU-spill comparison. User env vars:
    - `OLLAMA_HOST=127.0.0.1:11434` (never expose it)
    - `OLLAMA_KEEP_ALIVE=30m` while developing, which avoids cold reloads; for the sustainability measurement, compare against the default 5m
    - `OLLAMA_CONTEXT_LENGTH=4096`
    - `OLLAMA_FLASH_ATTENTION=1`
+   - `LLAMA_ARG_FIT_TARGET=512` on 4 GB cards: Ollama 0.34 keeps 1 GiB free by default and spilled 2 of llama3.2:3b's 29 layers to the CPU
 
    Keep the embedding model off the GPU or unloaded when chat needs the VRAM.
 2. `ollama run llama3.2:3b`, then `ollama ps` should show *100% GPU*. That confirms the 1050 Ti is actually used.
-3. `scripts/bench_models.py`: for each model, measure TTFT, tokens/s, VRAM (`nvidia-smi`) and tool-call validity on ~15 seed prompts from the golden set. Write a markdown table to `docs/benchmark-xps.md`, and re-run it on the demo host later.
+3. `helpmate-bench` (`scripts/bench_models.py` wraps it): for each model, measure TTFT, tokens/s, VRAM and tool-call validity on ~15 seed prompts from the golden set. It writes `docs/benchmarks/<host>.md` + `.json`; re-run it on the demo host later. **XPS result (Sep 29):** `docs/benchmarks/desktop-o05c1es.md`. llama3.2:3b is the default (100% GPU, TTFT median 0.9 s, but tool choice 80% / args valid 91%); qwen3:4b scored 100% but took ~48 s per answer (thinking) and spilled 16% to the CPU.
 4. Minimal `OllamaLLM` adapter so the skeleton runs with `HELPMATE_LLM=ollama`. A owns and extends it.
 
 ### Phase 4 — Web app core (weeks 2–3, while A builds the agent and B the data layer)
@@ -196,8 +197,8 @@ Everything here is built against MSW mocks, so it doesn't wait on A or B.
 The midterm submission (course wk 8) comes **before** the spec's week-6 demo, so the skeleton, chat, approvals, voice and push must be video-ready by ~Oct 26. Confirm the course week numbers on Avenue.
 
 ## 6. Hardware reality (XPS, 4 GB VRAM, 16 GB RAM)
-- **LLM:** 3–4B models at Q4 (llama3.2:3b is Llama-family, per the Updated spec; qwen3:4b / qwen2.5:3b are candidates for better tool calling). 7–8B won't fit in 4 GB and would partly run on CPU; benchmark it only for comparison. The spec's "4–9B, VRAM ≤ 7.5 GB" becomes "3–4B, VRAM ≤ 3.8 GB" on the XPS.
-- **VRAM:** llama3.2:3b is ~2.0 GB weights + ~0.45 GB KV at 4K + ~0.4 GB CUDA overhead ≈ **3 GB**. qwen3:4b is ≈ 3.5 GB (tight).
+- **LLM:** 3–4B models at Q4 (llama3.2:3b is Llama-family, per the Updated spec; qwen3:4b / qwen2.5:3b are candidates for better tool calling). 7–8B won't fit in 4 GB and would partly run on CPU; benchmark it only for comparison. The spec's "4–9B, VRAM ≤ 7.5 GB" becomes "3–4B, VRAM ≤ ~3 GB" on the XPS (measured below).
+- **VRAM (measured Sep 29, driver 582.66, Ollama 0.34.4):** Windows leaves **~3.3 GB of the 4 GB free** for CUDA. llama3.2:3b = 1.80 GB weights + 0.42 GB KV at 4K (flash attention) + 0.08 GB compute ≈ **2.3 GB on the device, 2.55 GB reported, 100% GPU** with `LLAMA_ARG_FIT_TARGET=512`. qwen3:4b needs ≈ 3.0 GB, so with a 512 MiB margin it runs **84% GPU / 16% CPU**. Plan for "3–4B, VRAM ≤ ~3 GB" on the XPS.
 - **STT/TTS on CPU:** whisper `base` int8 (~0.5 GB, ~0.6 s for a short clip). `base.en`/`small.en` are faster or more accurate but English-only, and the spec promises multilingual STT, so the default is multilingual `base` with the language configurable. Whisper pads audio to a 30 s window, so `small` costs ~1–2 s per clip on the 8750H. Kokoro int8 ~0.5 GB. Stream TTS by sentence.
 - **RAM budget (~11–12 GB total):** Windows + IDE + browser ~5–6 GB · WSL2/Docker 3 GB (capped) · Ollama host side ~1 GB · backend + worker ~0.5 GB · whisper + Kokoro ~1 GB · Vite ~0.5 GB.
 
@@ -214,4 +215,29 @@ The midterm submission (course wk 8) comes **before** the spec's week-6 demo, so
 - **4 GB VRAM and tool-calling quality of 3B models:** the benchmark decides. The ScriptedAgent fallback keeps the demo safe.
 - **Windows pitfalls:** CRLF (`.gitattributes`), long paths, Docker publishing on 0.0.0.0 by default (always bind `127.0.0.1:`), WSL2 memory.
 - **iOS push quirks:** Home Screen install is required, the PWA has a separate cookie jar, and install and subscription are tied to the hostname. Test on Android and iOS early (week 4, not week 6).
-- **Model licences:** qwen2.5:3b uses the Qwen licence, not Apache. Note it in the report if it wins the benchmark. The Updated spec asks for a Llama-family model, so llama3.2:3b is the default unless the benchmark clearly says otherwise.
+- **Model licences:** qwen2.5:3b uses the Qwen licence, not Apache; qwen3:4b (the one we benchmark) is Apache 2.0; llama3.2 uses the Llama 3.2 Community Licence. Note the licence in the report for whichever model ships. The Updated spec asks for a Llama-family model, so llama3.2:3b is the default unless the benchmark clearly says otherwise.
+
+---
+
+## 9. Open gaps (found Sep 29 while setting up the XPS and re-reading both specs)
+
+Tags: **[A]** / **[B]** / **[C]** = owning workstream, **[Spec]** = the submitted spec documents.
+
+**Must fix**
+1. **[Spec]** The Updated spec, due course week 4 (this week), drops Aman *and* all of Workstream C (voice, PWA, phone push), and the final grade checks "all the objectives set out initially". Fix: resubmit a merged spec that keeps O1 (voice), O3 (push within 60 s) and O7 (secure public access) and lists all three members.
+2. **[Spec]** Hardware and targets are written for the RTX 4070 (4–9B model, VRAM ≤ 7.5 GB). Fix: rewrite them for the XPS using the benchmark (3–4B, ≤ ~3 GB VRAM, llama3.2:3b), or decide the demo host first.
+3. **[A]** The Updated spec asks for three permission tiers (read-only / approval-required / permitted); `PolicyEngine` has two. Fix: add a "permitted" allowlist that is **empty by default**, so O6 still holds out of the box.
+4. **[A]** The Updated spec's test scenarios "detect calendar conflicts" and "find available time for a task" have no tools, and "failed or unnecessary tool calls" isn't measured. Fix: add `find_free_time` / conflict check on top of `CalendarPort.list_events`, and count extra or failed calls in `helpmate-bench`.
+5. **[B]** Gmail/Calendar land in project week 5 (the midterm week and feature freeze), but the Updated spec promises the *read* workflows by course week 7. Fix: ship read-only Gmail/Calendar in project weeks 3–4 so they're in the midterm video.
+6. **[A]** Evaluation targets aren't tracked: a golden set of ≥ 60 prompts (we have 15, so one miss moves a score by 6.7 points), retrieval recall@5 ≥ 0.8 on seeded data, 10 prompt-injection cases. Fix: grow `golden_seed.jsonl` and add recall and injection suites to eval-in-CI (week 9).
+7. **[Spec]** "Two weeks of daily use by the team" isn't in the timeline. Fix: schedule it for project weeks 6–8, after feature freeze.
+8. **[C]** "Energy per request" has no measurement plan, and `nvidia-smi` reports power as N/A on the 1050 Ti Max-Q. Fix: measure on the demo host, or with a wall-plug meter or HWiNFO on the XPS, and compare `KEEP_ALIVE` 30m vs 5m.
+9. **[A]** Memory facts can be viewed, deleted and exported, but not **edited**, which the original spec promises. Fix: additive `PATCH /api/memory/facts/{id}` + `MemoryRepo.update_fact`. **[C]** then adds the Edit button (see the CLAUDE.md backlog).
+10. **[Spec]** The course's *design documentation template* (midterm) and *final project requirements* document aren't in the repo or the spec folder. Fix: download them from Avenue before course week 8.
+
+**Minor**
+- **[A]** The Updated spec's optional web-search tool would add outbound traffic beyond Gmail/Calendar/Push. Fix: if it's kept, list it as an explicit, approval-gated exception to the privacy boundary.
+- **[A]** llama3.2:3b's benchmark misses: relative times ("in 10 minutes" → `PT10M`, "in two hours" → the wrong day), an empty `recurrence` for "every Monday", and `list_reminders` called for small talk. Fix: let the model return an offset or phrase and compute `due_at` in code (as `intent_parser` does), make `recurrence` an enum with examples, and tell the prompt that small talk gets a plain reply.
+- **[A]** Benchmark bugs: `rem-at` expects "today 17:00" even after 5 pm, which marks the right answer wrong; for thinking models, TTFT counts the first reasoning token. Fix: expect the *next* 17:00, and time to the first visible answer or tool call.
+- **[A]** Benchmark `qwen3:4b-instruct` so the qwen comparison is fair.
+- **[A]** `HELPMATE_LLM=ollama` also switches embeddings to `nomic-embed-text` on the same 4 GB GPU, which can push llama off 100% GPU. Fix: run embeddings on the CPU (`num_gpu: 0`) or give them their own switch.

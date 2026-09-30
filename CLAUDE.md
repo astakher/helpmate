@@ -6,6 +6,20 @@ Machine setup: `docs/setup-windows.md`. Contract rules: `docs/api-contract.md`.
 Team workstreams: **A** agent/LLM/memory/eval · **B** backend data/integrations/security/deploy ·
 **C** (Aman, repo owner) web app, voice, notifications. C also leads project weeks 1, 4 and 6.
 
+## Testbed vs. deliverable (read before changing anything)
+- This repo is Aman's **testbed**: the whole app lives here so Part C can be tested end to end.
+  Everything for A or B here (agent, LLM, memory, eval, data, scheduler, auth, integrations) is a
+  **stand-in**. The group's shared repo keeps A's and B's real code; only **Part C** is copied across,
+  and it must plug in unchanged.
+- **Part C** = `web/`, `services/speech/`, and backend `adapters/speech_http.py`,
+  `adapters/webpush_notifier.py`, `adapters/quiet_hours.py`, `api/routes/{voice,push,settings}.py`
+  with their tests. It may import only `helpmate.domain`, `helpmate.api.deps`, `helpmate.api.schemas`,
+  `helpmate.settings` (and itself); never `agent/ memory/ eval/ worker/`, A/B adapters, or fakes
+  (fakes are fine in tests). `tests/test_part_c_boundary.py` enforces it.
+- New A/B stand-in files start with `# Stand-in for Workstream A/B - not part of the Part C deliverable`.
+- Contract changes stay additive and are logged in `docs/part-c.md` §7.
+- Full handoff guide: **`docs/part-c.md`**. Leave `.github/CODEOWNERS` as is (template for the shared repo).
+
 ## Layout
 - `backend/` — FastAPI core plane (uv, Python 3.12). `src/helpmate/domain/ports.py` = the seams;
   `container.py` picks adapters from `HELPMATE_*` env; `agent/policy.py` = approval invariant;
@@ -68,3 +82,22 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   → `PT10M`), empty `recurrence`, and tool calls on small talk. See the report's Misses list.
 - Next: Phase 5 real voice → Phase 6 Web Push → Phase 7 Tailscale. Midterm video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
+
+## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
+- [C] Edit button on the Memory page. It needs [A] PATCH /api/memory/facts/{id}. Build that endpoint
+  here as a stand-in and record it as a contract change.
+- [C] Phase 5 real voice: faster-whisper + kokoro-onnx in `services/speech`, push-to-talk, spoken replies;
+  measure upload + STT + TTFT + first TTS ≤ 4 s.
+- [C] Phase 6 Web Push: `webpush_notifier.py`, `quiet_hours.py`, VAPID keys, "Enable notifications",
+  service-worker ack; add the `WebPushNotifier` factory to `tests/contracts/test_notifier.py`.
+- [C] Phase 7 Tailscale (`serve`, later `funnel`), prod mode, phone install and push test (Android + iPhone).
+- [C] Add a React error boundary so a render error shows a message, not a blank page.
+- [C] Energy per request: `nvidia-smi` power is N/A on the 1050 Ti Max-Q; plan a wall-meter/HWiNFO or
+  demo-host measurement.
+- [C] Phase 8: Playwright E2E (chat → approve → reminder → push ack) + DST test across Nov 1.
+- [A] (stand-in) llama3.2:3b misses: compute `due_at` in code from an offset, `recurrence` enum, plain
+  reply for small talk. Fix benchmark `rem-at` and thinking-model TTFT; try `qwen3:4b-instruct`.
+- [A] (stand-in) "permitted" permission tier (empty by default); calendar conflict/free-time tools;
+  golden set ≥ 60, recall@5, 10 prompt-injection cases.
+- [B] (stand-in) `SettingsRepo` case in `tests/contracts/test_repositories.py`; read-only
+  Gmail/Calendar by project week 4.
