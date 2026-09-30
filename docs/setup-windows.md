@@ -111,16 +111,28 @@ To use real components, edit `.env`, one seam at a time:
 
 ## 5. Phone access with Tailscale (week 4)
 
-1. `winget install Tailscale.Tailscale`, sign in, and install the Tailscale app on your phone with the same account.
-2. In the admin console: enable **MagicDNS** and **HTTPS certificates**. Rename this machine to `helpmate` so the URL survives a change of demo host.
+1. `winget install Tailscale.Tailscale` (UAC; publisher Tailscale Inc., from pkgs.tailscale.com), then sign in
+   and name the machine in one step: `tailscale up --hostname=helpmate` (it prints a login link). Install the
+   Tailscale app on your phone with the same account.
+2. In the admin console (https://login.tailscale.com/admin/dns): **MagicDNS** on (the default) and **Enable
+   HTTPS**. Enabling HTTPS publishes machine names such as `helpmate.<tailnet>.ts.net` in the public Certificate
+   Transparency logs: the name becomes visible, but only your tailnet can reach it. The fixed name keeps the
+   URL, the installed PWA and push subscriptions working if the demo moves to another laptop.
 3. Build the web app and serve it from FastAPI (a single origin):
    ```powershell
-   cd web; npm run build; cd ..
-   ./scripts/dev.ps1 -Prod                             # FastAPI serves web/dist at /
-   tailscale serve --bg 8000                           # https://helpmate.<tailnet>.ts.net (tailnet only)
+   ./scripts/dev.ps1 -Prod                             # builds web/, FastAPI serves web/dist at /
+   tailscale serve --bg http://127.0.0.1:8000          # https://helpmate.<tailnet>.ts.net (tailnet only)
+   tailscale serve status                              # must say "(tailnet only)"
    ```
-4. **Public demo only** (O7, after 2FA and rate limiting are on): `tailscale funnel --bg 8000`. Turn it off afterwards with `tailscale funnel --https=443 off`.
-5. **iPhone:** open the URL in Safari → Share → **Add to Home Screen** → open it from the Home Screen → log in → tap *Enable notifications*. Push only works from the installed app. **Android:** in Chrome, *Enable notifications* works directly.
+   The first HTTPS request takes ~20 s while the certificate is issued. The serve config **persists across
+   reboots**; turn it off with `tailscale serve --https=443 off`. SSE chat streams incrementally through it
+   (checked Sep 30), so no NDJSON fallback is needed.
+4. **Public demo only** (O7, after 2FA and rate limiting are on): `tailscale funnel --bg 8000`. **Never with
+   `HELPMATE_AUTH=dev`**: dev auth signs everyone in. Turn it off afterwards with `tailscale funnel --https=443 off`.
+5. **iPhone:** open the URL in Safari → Share → **Add to Home Screen** → open it from the Home Screen → log in →
+   Settings → *Enable notifications* → *Send a test notification*. Push only works from the installed app.
+   **Android:** in Chrome, *Enable notifications* works directly. Measured Sep 30 on an iPhone 15 Pro: test push
+   shown 1.0 s after sending.
 
 ## Troubleshooting
 
@@ -135,6 +147,9 @@ To use real components, edit `.env`, one seam at a time:
   (icon left of the address bar) and reload.
 - **Push worked, then stopped after restarting the API:** the testbed keeps subscriptions in memory. Open
   Settings once; the page re-registers this browser automatically.
+- **Chrome gets pushes but the iPhone doesn't, and the API log says `CERTIFICATE_VERIFY_FAILED ...
+  web.push.apple.com`:** Windows downloads root CAs on demand, so Python's view of the store lacked Apple's root
+  (COMODO ECC). `WebPushNotifier` verifies against certifi's bundle since Sep 30; update if you see this.
 - **Voice: `TypeError: open() got an unexpected keyword argument 'metadata_errors'`:** PyAV 19 broke
   faster-whisper 1.2.1. `services/speech` pins `av<19`; run `uv sync --extra real` to get 18.x back.
 - **Voice replies take many seconds to start:** check `/health` on :8001 says `kokoro-v1.0.onnx` (fp32). The

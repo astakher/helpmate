@@ -91,6 +91,8 @@ class QuietHoursNotifier:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._timer
             self._timer = None
+        if (close := getattr(self._inner, "aclose", None)) is not None:
+            await close()  # e.g. WebPushNotifier's HTTP session
 
     def _hold_until(self, prefs: NotificationSettings, now: datetime) -> datetime | None:
         if prefs.quiet_hours is not None:

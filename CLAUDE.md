@@ -69,6 +69,8 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - Speech: pin `av<19` (faster-whisper 1.2.1 passes `metadata_errors`, which PyAV 19 removed); use
   Kokoro **fp32** (int8 is ~10x slower without AVX-512 VNNI); `uv sync` without `--extra real` removes
   the real engine (`uv run` doesn't). Recordings under ~0.4 s are bare webm headers → 422, not 500.
+- Web Push TLS uses certifi, not the Windows store: Windows fetches roots lazily, and Python lacked
+  Apple's (COMODO ECC), so iPhone pushes failed while Chrome's (FCM) worked.
 
 ## Status (update as phases land)
 - Done: Phase 0–2 (repo, CI, contract v0.1, walking skeleton), benchmark script, Phase 4 web
@@ -100,7 +102,10 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   target. `SPEECH_ENGINE=real`: whisper `base` int8 1.2 s (0.66 s with `language=en`) for 2.4 s of
   speech, Kokoro fp32 0.6 s for the first chunk. Estimated ~3 s for plain questions, ~4–4.5 s with a
   tool call (the model's tool call is 2–3 s).
-- Next: Phase 7 Tailscale (phone: HTTPS for mic + push). Midterm video ≈ Oct 26.
+- **Phase 7 Tailscale works** (Sep 30): `https://helpmate.<tailnet>.ts.net` via `tailscale serve`
+  (tailnet only; funnel off), SSE streams through it. iPhone 15 Pro: PWA from the Home Screen, test
+  push shown 1.0 s after sending (needed certifi TLS for web.push.apple.com, see gotchas).
+- Next: Phase 8 (Playwright E2E + DST test across Nov 1), midterm design doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
@@ -110,7 +115,8 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   streaming; a per-device "voice language" choice (auto vs en); record real Chrome + iPhone clips as fixtures.
 - ~~[C] Phase 6 Web Push~~ Done Sep 30 on desktop. Left: test on a phone (after Phase 7); durable
   holds for quiet hours belong in B's job queue (today they're in memory).
-- [C] Phase 7 Tailscale (`serve`, later `funnel`), prod mode, phone install and push test (Android + iPhone).
+- ~~[C] Phase 7 Tailscale~~ Done Sep 30 with `serve` + iPhone. Left: test on Android; voice on the
+  iPhone; `funnel` only once B's 2FA and rate limiting exist.
 - ~~[C] Add a React error boundary so a render error shows a message, not a blank page.~~ Done Sep 30
   (`web/src/ErrorBoundary.tsx`: around the pages, reset on navigation, and around the whole app).
 - [C] Energy per request: `nvidia-smi` power is N/A on the 1050 Ti Max-Q; plan a wall-meter/HWiNFO or

@@ -133,3 +133,17 @@ async def test_real_pywebpush_accepts_keys_from_gen_vapid_offline(tmp_path, monk
     )
     assert "authorization: vapid t=" in request and "ttl: 3600" in request
     assert "content-encoding: aes128gcm" in request and "urgency: high" in request
+
+
+def test_push_tls_trusts_the_roots_behind_apple_and_google_push():
+    """iPhone pushes go to web.push.apple.com, whose chain ends at COMODO ECC Certification
+    Authority. On the XPS that root wasn't in Python's view of the Windows store (Windows fetches
+    roots on demand), so every iPhone push failed TLS. push_ssl_context() uses certifi instead."""
+    from helpmate.adapters.webpush_notifier import push_ssl_context
+
+    roots = {
+        dict(x[0] for x in c["subject"]).get("commonName")
+        for c in push_ssl_context().get_ca_certs()
+    }
+    assert "COMODO ECC Certification Authority" in roots  # web.push.apple.com (Safari / iPhone)
+    assert "GTS Root R1" in roots  # fcm.googleapis.com (Chrome)
