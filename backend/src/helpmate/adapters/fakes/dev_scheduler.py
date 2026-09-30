@@ -1,8 +1,8 @@
 """DevScheduler (HELPMATE_SCHEDULER=dev): an asyncio loop that polls for due reminders.
 
-Stand-in for Workstream B's Postgres job queue. It does not survive restarts, has no retries and
-ignores recurrence (a recurring reminder fires once). Those are exactly the things the real
-scheduler adds.
+Stand-in for Workstream B's Postgres job queue. It does not survive restarts and has no retries;
+those are the things the real scheduler adds. Recurring reminders (RRULE) are rescheduled to
+their next occurrence on the owner's wall clock (worker/recurrence.py, added Sep 30).
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from helpmate.domain.models import (
     Delivery,
@@ -20,6 +22,7 @@ from helpmate.domain.models import (
     new_id,
 )
 from helpmate.domain.ports import Clock, NotifierPort, Repositories
+from helpmate.worker.recurrence import InvalidRecurrence, next_occurrence
 
 log = logging.getLogger("helpmate.scheduler")
 
@@ -34,11 +37,13 @@ class DevScheduler:
         notifier: NotifierPort,
         clock: Clock,
         tick_seconds: float = 5.0,
+        tz: ZoneInfo | None = None,
     ) -> None:
         self._repos = repos
         self._notifier = notifier
         self._clock = clock
         self._tick_seconds = tick_seconds
+        self._tz = tz or ZoneInfo("UTC")  # the owner's zone: recurrences follow their wall clock
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -85,11 +90,27 @@ class DevScheduler:
                 )
             )
             await self._notifier.notify(notification)
-            reminder.status = ReminderStatus.SENT
             reminder.sent_at = self._clock.now()
+            following = self._next(reminder)
+            if following is None:
+                reminder.status = ReminderStatus.SENT
+            else:  # recurring: the same reminder waits for its next occurrence
+                reminder.due_at = following
+                log.info("recurring reminder %s next at %s", reminder.id, following.isoformat())
             await self._repos.reminders.update(reminder)
             fired += 1
         return fired
+
+    def _next(self, reminder: Reminder) -> datetime | None:
+        if not reminder.recurrence:
+            return None
+        try:
+            return next_occurrence(
+                reminder.recurrence, reminder.due_at, self._tz, after=self._clock.now()
+            )
+        except InvalidRecurrence as exc:
+            log.warning("reminder %s fires once: %s", reminder.id, exc)
+            return None
 
     async def _loop(self) -> None:
         while True:

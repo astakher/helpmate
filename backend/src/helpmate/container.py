@@ -145,7 +145,9 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     # --- Scheduler (B) ---
     scheduler: SchedulerPort
     if settings.scheduler == "dev":
-        scheduler = DevScheduler(repos, notifier, clock, settings.scheduler_tick_seconds)
+        scheduler = DevScheduler(
+            repos, notifier, clock, settings.scheduler_tick_seconds, tz=settings.tz
+        )
     else:
         _not_yet("scheduler", settings.scheduler)
 
