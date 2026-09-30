@@ -105,7 +105,8 @@ def workload(client: httpx.Client) -> list[str]:
     health = client.get(f"{API}/health").json()["adapters"]
     steps.append(f"health: llm={health['llm']['name']}, stt={health['stt']['name']}")
     session = client.post(f"{API}/chat/sessions", json={}).json()["id"]
-    for text in ("What's the capital of Canada? One sentence.", "remind me to stretch in 5 minutes"):
+    prompts = ("What's the capital of Canada? One sentence.", "remind me to stretch in 5 minutes")
+    for text in prompts:
         with client.stream(
             "POST", f"{API}/chat/sessions/{session}/messages", json={"text": text}
         ) as r:

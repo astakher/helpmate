@@ -1,12 +1,14 @@
 """Port contract tests for the persistence layer.
 
-Every implementation of `Repositories` must pass these. Workstream B: add a "postgres" factory
-(skipped unless HELPMATE_TEST_DATABASE_URL is set) and the same tests run against Postgres.
+Every implementation of `Repositories` must pass these. "postgres" (stand-in for Workstream B)
+runs only when HELPMATE_TEST_DATABASE_URL points at a THROWAWAY database (every table is emptied
+before each test), e.g. postgresql://helpmate:<password>@127.0.0.1:5432/helpmate_test.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import os
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -29,16 +31,38 @@ from helpmate.domain.models import (
 )
 from helpmate.domain.ports import Repositories
 
+TEST_DATABASE_URL = os.environ.get("HELPMATE_TEST_DATABASE_URL", "")
+
+
+def _postgres() -> Repositories:
+    from helpmate.adapters.postgres_repos import PostgresRepositories
+
+    return PostgresRepositories(TEST_DATABASE_URL)
+
+
 FACTORIES: dict[str, Callable[[], Repositories]] = {
     "memory": InMemoryRepositories,
+    "postgres": _postgres,
 }
 
 NOW = datetime(2026, 10, 5, 16, 0, tzinfo=UTC)
+_migrated = False
 
 
 @pytest.fixture(params=sorted(FACTORIES))
-def repos(request) -> Repositories:
-    return FACTORIES[request.param]()
+async def repos(request) -> AsyncIterator[Repositories]:
+    global _migrated
+    if request.param == "postgres" and not TEST_DATABASE_URL:
+        pytest.skip("set HELPMATE_TEST_DATABASE_URL to run the contract suite against Postgres")
+    repositories = FACTORIES[request.param]()
+    if request.param == "postgres":
+        if not _migrated:
+            await repositories.migrate()
+            _migrated = True
+        await repositories.truncate()
+    yield repositories
+    if request.param == "postgres":
+        await repositories.close()
 
 
 def _reminder(minutes: int, status: ReminderStatus = ReminderStatus.SCHEDULED) -> Reminder:

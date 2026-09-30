@@ -110,8 +110,11 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - **Privacy check PASS** (Sep 30, `scripts/privacy_check.py` → `docs/privacy/<host>.md`): during chat,
   a proposal, a voice round trip and a test push, HelpMate's processes reached only loopback (after
   fixing Whisper's Hugging Face check), Tailscale devices and push services.
-- Next: Postgres after the reboot (Docker Desktop is installed), Phase 8 Playwright E2E, midterm design
-  doc + 3-min video ≈ Oct 26.
+- **Postgres works** (Sep 30; stand-in for B, `adapters/postgres_repos.py` + Alembic `migrations/`):
+  pgvector/pgvector:0.8.6-pg17 in Docker on 127.0.0.1, JSONB rows + typed columns, same contract suite
+  as the fakes (16/16 with `HELPMATE_TEST_DATABASE_URL`), data survives API restarts.
+- Next: Gmail + Google Calendar (waiting on the owner's Google Cloud OAuth client), Phase 8 Playwright
+  E2E, midterm design doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
@@ -134,8 +137,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   (Done as stand-ins: benchmark `rem-at` fix, thinking-model TTFT, held-out set, `--pipeline`.)
 - [A] (stand-in) "permitted" permission tier (empty by default); calendar conflict/free-time tools;
   golden set ≥ 60, recall@5, 10 prompt-injection cases.
-- [B] Postgres repos must pass `tests/contracts/test_repositories.py` (now incl. settings and
-  `update_fact`); read-only Gmail/Calendar by project week 4.
+- [B] Postgres: stand-in done (all repos, Alembic 0001, contract suite green). B owns the schema from
+  here (FKs, retention, backups + restore drill); the durable job queue (`scheduler=pg`, SKIP LOCKED)
+  is still unbuilt. Read-only Gmail/Calendar by project week 4.
 - [B] Real login: stand-in `HELPMATE_AUTH=totp` works (Sep 30; `adapters/totp_auth.py`, password via
   `scripts/set_password.py`). B moves users/secrets/sessions to Postgres and adds recovery codes.
   With `dev` auth 2FA can't be on and `tailscale funnel` stays off. See plan §9 item 11.

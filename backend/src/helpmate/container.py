@@ -96,6 +96,10 @@ class Container:
     async def startup(self) -> None:
         if isinstance(self.repos, InMemoryRepositories):
             await self.repos.seed(self.clock.now(), self.settings.timezone)
+        elif (start := getattr(self.repos, "startup", None)) is not None:
+            await start(
+                self.clock.now(), self.settings.timezone
+            )  # Postgres: migrate, seed if empty
         if self.settings.scheduler_autostart:
             await self.scheduler.start()
 
@@ -105,6 +109,8 @@ class Container:
             await close()  # e.g. QuietHoursNotifier's release timer
         for client in self._http_clients:
             await client.aclose()
+        if (close_repos := getattr(self.repos, "close", None)) is not None:
+            await close_repos()  # e.g. the Postgres connection pool
 
 
 def build_container(settings: Settings, clock: Clock | None = None) -> Container:
@@ -121,7 +127,10 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     if settings.repo == "memory":
         repos = InMemoryRepositories()
     else:
-        _not_yet("repo", settings.repo)
+        # Stand-in for Workstream B - not part of the Part C deliverable
+        from helpmate.adapters.postgres_repos import PostgresRepositories
+
+        repos = PostgresRepositories(settings.database_url or "")
 
     # --- Auth (B) ---
     auth: AuthPort
