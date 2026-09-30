@@ -24,25 +24,53 @@ def _require_real_auth(container: Container) -> None:
         raise HTTPException(status.HTTP_409_CONFLICT, DEV_AUTH_NO_MFA)
 
 
-def _set_session(response: Response, token: str) -> None:
-    # TODO(B): secure=True once served over HTTPS (Tailscale); SameSite=Strict + HttpOnly always
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", path="/")
+def _set_session(request: Request, response: Response, token: str) -> None:
+    # HttpOnly + SameSite=Strict always; Secure when the request came over HTTPS. Behind
+    # `tailscale serve`, uvicorn's proxy headers (from 127.0.0.1) make the scheme "https".
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
 
 
-@router.post("/login", response_model=LoginOut)
-async def login(body: LoginIn, response: Response, container: ContainerDep) -> LoginOut:
+@router.post(
+    "/login",
+    response_model=LoginOut,
+    responses={401: {"description": "wrong username or password"}, 429: {"description": "locked"}},
+)
+async def login(
+    body: LoginIn, request: Request, response: Response, container: ContainerDep
+) -> LoginOut:
     result = await container.auth.login(body.username, body.password)
+    if result.retry_after_seconds:
+        minutes = max(1, round(result.retry_after_seconds / 60))
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many failed sign-ins. Try again in {minutes} minute{'s' * (minutes != 1)}.",
+            headers={"Retry-After": str(result.retry_after_seconds)},
+        )
+    if not result.session_token and not result.mfa_required:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password.")
     if result.session_token:
-        _set_session(response, result.session_token)
+        _set_session(request, response, result.session_token)
     return LoginOut(mfa_required=result.mfa_required, challenge_id=result.challenge_id)
 
 
 @router.post("/mfa", status_code=status.HTTP_204_NO_CONTENT)
-async def verify_mfa(body: MfaIn, response: Response, container: ContainerDep) -> None:
+async def verify_mfa(
+    body: MfaIn, request: Request, response: Response, container: ContainerDep
+) -> None:
     token = await container.auth.verify_mfa(body.challenge_id, body.code)
     if token is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid code")
-    _set_session(response, token)
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "That code didn't work. Use the newest code; after 5 tries, sign in again.",
+        )
+    _set_session(request, response, token)
 
 
 @router.post(

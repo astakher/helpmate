@@ -907,6 +907,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginOut'
+        '401':
+          description: wrong username or password
+        '429':
+          description: locked
         '422':
           description: Validation Error
           content:

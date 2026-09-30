@@ -7,6 +7,7 @@ the HELPMATE_* variable in .env. Nothing else in the codebase changes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import NoReturn
 
 import httpx
@@ -127,7 +128,16 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     if settings.auth == "dev":
         auth = DevAuth()
     else:
-        _not_yet("auth", settings.auth)
+        # Stand-in for Workstream B - not part of the Part C deliverable
+        from helpmate.adapters.totp_auth import TotpAuth
+
+        auth = TotpAuth(
+            settings.owner_username,
+            settings.owner_password_hash.get_secret_value(),
+            settings.auth_state_file,
+            clock,
+            timedelta(days=settings.session_days),
+        )
 
     # --- Notifications (C) ---
     notifier: NotifierPort

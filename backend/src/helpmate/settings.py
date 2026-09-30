@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # --- Speech service ---
     speech_url: str = "http://127.0.0.1:8001"
 
+    # --- Auth: HELPMATE_AUTH=totp (Workstream B stand-in) ---
+    owner_username: str = "owner"
+    owner_password_hash: SecretStr = SecretStr("")  # argon2; set with scripts/set_password.py
+    auth_state_file: Path = REPO_ROOT / "data" / "auth.json"  # TOTP secret (data/ is git-ignored)
+    session_days: int = 7
+
     # --- Postgres / S3 (Workstream B) ---
     database_url: str | None = None
     s3_endpoint: str | None = None

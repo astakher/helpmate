@@ -36,9 +36,13 @@ class User(DomainModel):
 
 
 class LoginResult(DomainModel):
+    """No token and no MFA step = wrong username or password (401). `retry_after_seconds` = too
+    many failures, locked out for that long (429). Both added Sep 30, additive."""
+
     mfa_required: bool
     challenge_id: str | None = None  # pass back with the TOTP code
     session_token: str | None = None  # set when no MFA step is needed; goes in a cookie, never JSON
+    retry_after_seconds: int | None = None
 
 
 # --- Proposals (the approval cards) ----------------------------------------------------------

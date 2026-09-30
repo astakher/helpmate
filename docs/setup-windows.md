@@ -107,6 +107,7 @@ To use real components, edit `.env`, one seam at a time:
 | Ollama | `HELPMATE_LLM=ollama` | step 2 |
 | Real speech | `HELPMATE_STT=http`, `HELPMATE_TTS=http`, `SPEECH_ENGINE=real` | `./scripts/get_models.ps1` once: installs the `real` extra (faster-whisper, kokoro-onnx) and downloads Kokoro **fp32** (325 MB + 28 MB voices) and Whisper `base` (~145 MB). `dev.ps1` then starts speech with `uv run --extra real`. A plain `uv sync` in `services/speech` removes the extra again; use `uv sync --extra real`. Voice needs the mic, so use Chrome on `127.0.0.1` (or HTTPS on a phone, §5). |
 | Postgres | `HELPMATE_REPO=postgres` | `docker compose -f infra/docker-compose.yml up -d` |
+| Real login + 2FA | `HELPMATE_AUTH=totp` | in **your own terminal**, from `backend/`: `uv run python ../scripts/set_password.py` (writes an argon2 hash to `.env`, never the password). Restart the API and sign in, then Settings → Two-step verification → scan → enter the first code → **Turn on**. Lost phone: `set_password.py --reset-2fa`. 5 wrong passwords lock sign-in for 15 min. |
 | Web Push | `HELPMATE_NOTIFIER=webpush` + VAPID keys | `cd backend; uv run python ../scripts/gen_vapid.py --write` (once; share the same keys across hosts). Then `./scripts/dev.ps1 -Prod`, open `http://127.0.0.1:8000/settings` → **Enable notifications** → **Send a test notification**. Not on :5173: the dev server has no service worker. |
 
 ## 5. Phone access with Tailscale (week 4)

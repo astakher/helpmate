@@ -130,6 +130,8 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   golden set ≥ 60, recall@5, 10 prompt-injection cases.
 - [B] Postgres repos must pass `tests/contracts/test_repositories.py` (now incl. settings and
   `update_fact`); read-only Gmail/Calendar by project week 4.
-- [B] Real login (`HELPMATE_AUTH=totp`): implement `AuthPort.confirm_mfa` behind the stand-in
-  `POST /api/auth/mfa/enroll/confirm`. Until then 2FA **cannot** be on (the dev login refuses enrolment
-  with a 409 and the Settings card says so), and `tailscale funnel` stays off. See plan §9 item 11.
+- [B] Real login: stand-in `HELPMATE_AUTH=totp` works (Sep 30; `adapters/totp_auth.py`, password via
+  `scripts/set_password.py`). B moves users/secrets/sessions to Postgres and adds recovery codes.
+  With `dev` auth 2FA can't be on and `tailscale funnel` stays off. See plan §9 item 11.
+- [B] Recurring reminders: stand-in in `worker/recurrence.py` + `DevScheduler` (Sep 30, DST-tested);
+  B's Postgres job queue must reuse `next_occurrence` or pass `tests/test_recurrence.py`.
