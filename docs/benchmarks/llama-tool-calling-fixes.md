@@ -101,3 +101,33 @@ Reports: `desktop-o05c1es-{seed,holdout,connectors}-routed-9routes[-v2].md`.
 Live on the XPS through chat (real Google account, read-only): "what's on my calendar this week?",
 "any unread emails?" and "when am I free for an hour tomorrow?" each chose the right tool, and each
 answered in ~2 s once the model was warm.
+
+## Update Sep 30 (evening): a live miss, "show me the last mail"
+
+Typed into the app, it was answered with "You have no upcoming reminders." Two separate bugs:
+
+1. **Routing: "show me …" goes to the first list route**, whatever follows ("show me the last
+   mail" → `list_reminders`; once `list_tasks` existed, → `list_tasks`). Fix: **topic words**
+   (`llm_tools.routes_for`). People asking for reminders, tasks or email name the topic, and every
+   such prompt in the golden sets (17 reminder, 10 task, 9 email) does. Without one of the words,
+   those routes are left out of both the router prompt and its schema. Leaving them out of the
+   schema alone doesn't work: the model then finishes `list_` as another list route. Calendar
+   routes aren't guarded ("am I free Friday?" names no topic).
+2. **Arguments: the model writes the string `"null"`** for fields it doesn't need, so the search
+   became `from:null null` ("No emails match."). The old check only asked that the query
+   *contain* `is:unread`, so the benchmark passed it. Fix: `resolve()` drops placeholder values
+   ("null", "none", "n/a", …) for every tool, and a new `field!~` check fails any query that
+   contains "null".
+
+Also new: a read-only `list_tasks` tool ("show me my tasks" had nowhere right to go).
+
+| Run | Seed (15) | Held-out (16) | Connectors | Args valid / correct |
+|---|---|---|---|---|
+| nine routes + "talks about → reply" (above) | 93% | 100% | 94% (18) | 100% / 100% |
+| + topic words, `list_tasks`, placeholders | **100%** | **100%** | **91% (23)** | 100% / 100% |
+
+The connectors set grew by five cases: the live prompt and four like it (`live-*`, `mail-newest-message`,
+`tasks-year`). Remaining misses: "I get way too many emails" → `send_email` (the agent asks who
+it's for; nothing is drafted), and "read my newest message" → plain reply. Reports:
+`desktop-o05c1es-{seed,holdout,connectors}-routed-guard.md`. Live after the fix: "show me the last
+mail" and "check my inbox" list the latest 5, "any new emails?" searches `is:unread`, ~2 s each.

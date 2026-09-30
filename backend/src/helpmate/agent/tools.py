@@ -193,6 +193,31 @@ async def _list_reminders(_: ListRemindersArgs, deps: ToolDeps) -> str:
     return "Upcoming: " + "; ".join(f"{r.text} ({fmt_local(r.due_at, deps.tz)})" for r in upcoming)
 
 
+# --- list_tasks (read-only) ------------------------------------------------------------------
+
+
+class ListTasksArgs(BaseModel):
+    horizon: Horizon | None = Field(default=None, description="Only this horizon; empty: all")
+
+
+async def _list_tasks(args: ListTasksArgs, deps: ToolDeps) -> str:
+    open_tasks = await deps.repos.tasks.find(args.horizon, done=False)
+    where = f" for {_HORIZON_LABEL[args.horizon]}" if args.horizon else ""
+    if not open_tasks:
+        return f"You have no open tasks{where}."
+    lines = []
+    for horizon in Horizon:
+        titles = [
+            t.title + (f" (due {fmt_local(t.due_at, deps.tz)})" if t.due_at else "")
+            for t in open_tasks
+            if t.horizon == horizon
+        ]
+        if titles:
+            lines.append(f"{_HORIZON_LABEL[horizon].capitalize()}: " + "; ".join(titles))
+    count = len(open_tasks)
+    return f"{count} open task{'s' if count != 1 else ''}{where}:\n" + "\n".join(lines)
+
+
 # --- search_email (read-only) ----------------------------------------------------------------
 
 
@@ -375,6 +400,16 @@ def default_registry() -> ToolRegistry:
             read_only=True,
             describe=lambda _args, _tz: ("List reminders", ""),
             execute=_list_reminders,
+        )
+    )
+    registry.register(
+        Tool(
+            name="list_tasks",
+            description="List the owner's open tasks, optionally for one horizon.",
+            args_model=ListTasksArgs,
+            read_only=True,
+            describe=lambda args, _tz: ("List tasks", args.horizon or ""),
+            execute=_list_tasks,
         )
     )
     registry.register(

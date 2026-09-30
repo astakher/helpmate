@@ -21,10 +21,11 @@ Pipelines:
 
 Case sets: golden_seed.jsonl (15, also used while designing the improved prompt),
 golden_holdout.jsonl (16, written before any improved run and never used for tuning) and
-golden_connectors.jsonl (18: email + calendar, and look-alikes that must NOT use them).
-Checks: `field~` contains; `due|start|end_local` "+N HH:MM" (N days from today);
-`due|start|end_next_local` "[MO ]HH:MM" (the next such local time); `asks_owner` (the call is
-right to stop and ask, e.g. no email address given); anything else must be equal.
+golden_connectors.jsonl (23: email + calendar + listing tasks, and look-alikes that must NOT use
+them; the `live-` cases are real misses from using the app).
+Checks: `field~` contains; `field!~` must not contain; `due|start|end_local` "+N HH:MM" (N days
+from today); `due|start|end_next_local` "[MO ]HH:MM" (the next such local time); `asks_owner` (the
+call is right to stop and ask, e.g. no email address given); anything else must be equal.
 
 Needs Ollama running locally (OLLAMA_HOST=127.0.0.1:11434). Temperature is 0 so runs are
 comparable.
@@ -173,7 +174,10 @@ class Bench:
     async def _load(self, model: str) -> float:
         started = time.perf_counter()
         response = await self._client.post(
-            "/api/generate", json={"model": model, "prompt": "", "keep_alive": "10m"}
+            # no keep_alive: the server's OLLAMA_KEEP_ALIVE applies, so a benchmark run doesn't
+            # shorten how long the app's model stays loaded afterwards
+            "/api/generate",
+            json={"model": model, "prompt": ""},
         )
         if response.status_code == 404:
             raise RuntimeError(f"model {model!r} not pulled — run: ollama pull {model}")
@@ -238,22 +242,23 @@ class Bench:
         return result
 
     async def _route(self, model: str, text: str) -> str:
+        routes = llm_tools.routes_for(text)  # as the LoopAgent does
         payload: dict[str, Any] = {
             "model": model,
             "stream": False,
             "messages": [
-                {"role": "system", "content": llm_tools.ROUTER_PROMPT},
+                {"role": "system", "content": llm_tools.router_prompt(routes)},
                 {"role": "user", "content": text},
             ],
-            "format": llm_tools.ROUTE_FORMAT,
+            "format": llm_tools.route_format(routes),
             "options": {"temperature": 0, "num_predict": 20},
-            "keep_alive": "10m",
         }
         if model.startswith("qwen3"):
             payload["think"] = False
         response = await self._client.post("/api/chat", json=payload)
         response.raise_for_status()
-        return llm_tools.parse_route((response.json().get("message") or {}).get("content", ""))
+        content = (response.json().get("message") or {}).get("content", "")
+        return llm_tools.parse_route(content, routes)
 
     async def _chat(
         self, model: str, messages: list[dict[str, Any]], specs: list[Any]
@@ -264,7 +269,6 @@ class Bench:
             "messages": messages,
             "tools": [{"type": "function", "function": s.model_dump()} for s in specs],
             "options": {"temperature": 0},
-            "keep_alive": "10m",
         }
         if model.startswith("qwen3"):
             payload["think"] = False
@@ -365,7 +369,11 @@ def check_args(
     right but omits the offset still passes here (and fails only `args_strict_ok`)."""
     notes: list[str] = []
     for key, expected in checks.items():
-        if key.endswith("~"):
+        if key.endswith("!~"):  # must NOT contain, e.g. a "null" the model wrote as text
+            value = str(args.get(key[:-2], ""))
+            if str(expected).lower() in value.lower():
+                notes.append(f"{key[:-2]}={value!r} contains {expected!r}")
+        elif key.endswith("~"):
             value = str(args.get(key[:-1], ""))
             if str(expected).lower() not in value.lower():
                 notes.append(f"{key[:-1]}={value!r} lacks {expected!r}")

@@ -104,6 +104,7 @@ async def test_remember_files_a_suggestion_that_needs_approval(client, parse_sse
 async def test_tools_endpoint_exposes_argument_schemas(client):
     tools = {t["name"]: t for t in (await client.get("/api/tools")).json()}
     assert set(tools) == {
+        "list_tasks",
         "create_reminder",
         "create_task",
         "list_reminders",

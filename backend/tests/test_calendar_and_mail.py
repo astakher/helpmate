@@ -340,3 +340,59 @@ def test_period_labels_read_naturally():
     assert fmt_span(at(5, 0), at(6, 0), TZ) == "Mon Oct 05"
     assert fmt_span(at(5, 12), at(12, 0), TZ) == "Mon Oct 05 12:00 - Sun Oct 11"
     assert fmt_span(at(5, 22), at(6, 1), TZ) == "Mon Oct 05 22:00 - Tue Oct 06 01:00"
+
+
+# --- routing guard + list_tasks (live miss Sep 30: "show me the last mail" -> list_reminders) -----
+
+
+def test_reminder_routes_need_a_reminder_word():
+    for text in ("show me the last mail", "show me my tasks", "what's on Friday?"):
+        routes = llm_tools.routes_for(text)
+        assert "list_reminders" not in routes and "create_reminder" not in routes
+        assert "list_reminders" not in llm_tools.router_prompt(routes)
+        assert llm_tools.route_format(routes)["properties"]["action"]["enum"] == list(routes)
+    assert "list_reminders" in llm_tools.routes_for("any reminders coming up?")
+    assert "create_reminder" in llm_tools.routes_for("Remind me to stretch at 5")
+    assert llm_tools.parse_route('{"action": "list_reminders"}', ("reply", "search_email")) == (
+        "reply"
+    )
+
+
+async def test_agent_router_is_not_offered_reminders_for_a_mail_question(container):
+    llm = ScriptLLM(lambda text: "search_email", lambda messages: call("search_email"))
+    await run(agent_with(container, llm), "show me the last mail")
+    router = llm.calls[0]
+    assert "list_reminders" not in router["schema"]["properties"]["action"]["enum"]
+    assert "list_reminders" not in router["messages"][0].content
+
+
+async def test_list_tasks_groups_open_tasks_by_horizon(container):
+    for title, horizon in (("read ch. 3", "term"), ("buy milk", "week"), ("learn Go", "someday")):
+        await container.policy.handle_call(_call("create_task", title=title, horizon=horizon))
+    for proposal in await container.repos.proposals.find():
+        await container.policy.decide(proposal.id, "approve")
+    everything = await container.policy.handle_call(_call("list_tasks"))
+    assert everything.summary == (
+        "3 open tasks:\nThis week: buy milk\nThis term: read ch. 3\nSomeday: learn Go"
+    )
+    term = await container.policy.handle_call(_call("list_tasks", horizon="term"))
+    assert term.summary == "1 open task for this term:\nThis term: read ch. 3"
+    assert resolve("list_tasks", horizon="this term") == {"horizon": "term"}
+    assert resolve("list_tasks", horizon="all") == {"horizon": None}
+
+
+def test_task_and_mail_routes_need_their_topic_words():
+    explain = llm_tools.routes_for("Explain the PARA method for organizing notes")
+    assert "create_task" not in explain and "list_tasks" not in explain
+    assert "search_email" not in explain and "send_email" not in explain
+    assert {"list_tasks", "create_task"} <= set(llm_tools.routes_for("show me my to-do list"))
+    assert "send_email" in llm_tools.routes_for("write to sam.lee@example.com, say thanks")
+    assert "search_email" in llm_tools.routes_for("check my inbox")
+    assert "list_events" in llm_tools.routes_for("am I free Friday?")  # calendar: never guarded
+
+
+def test_placeholder_strings_mean_not_given():
+    # live Sep 30: llama3.2:3b sent sender="null", about="null" -> Gmail searched `from:null null`
+    assert resolve("search_email", sender="null", about="None", days="n/a")["query"] == ""
+    event = resolve("create_event", title="gym", when="Saturday at 10am", location="null")
+    assert event["location"] is None

@@ -112,7 +112,9 @@ async def test_small_talk_gets_a_plain_reply_with_no_tools_offered(container):
 
     assert reply_text(events) == "Sure thing." and events[-1].ttft_ms is not None
     assert not any(isinstance(e, (ToolStarted, ProposalCreated)) for e in events)
-    assert llm.calls[0]["schema"] == llm_tools.ROUTE_FORMAT  # 1: routing, structured output
+    # 1: routing, structured output (no reminder routes: the message never says "remind")
+    routes = llm_tools.routes_for("thanks, you're great")
+    assert llm.calls[0]["schema"] == llm_tools.route_format(routes)
     reply_call = llm.calls[1]  # 2: the reply, no tools and the example-free prompt
     assert reply_call["tools"] == [] and "Examples" not in reply_call["messages"][0].content
 

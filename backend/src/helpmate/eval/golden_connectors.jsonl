@@ -1,6 +1,6 @@
-{"id": "mail-new", "prompt": "Do I have any new emails?", "tool": "search_email", "checks": {"query~": "is:unread"}}
-{"id": "mail-from", "prompt": "Did the landlord email me this week?", "tool": "search_email", "checks": {"query~": "landlord"}}
-{"id": "mail-about", "prompt": "Find the email about my flight booking", "tool": "search_email", "checks": {"query~": "flight"}}
+{"id": "mail-new", "prompt": "Do I have any new emails?", "tool": "search_email", "checks": {"query!~": "null", "query~": "is:unread"}}
+{"id": "mail-from", "prompt": "Did the landlord email me this week?", "tool": "search_email", "checks": {"query!~": "null", "query~": "landlord"}}
+{"id": "mail-about", "prompt": "Find the email about my flight booking", "tool": "search_email", "checks": {"query!~": "null", "query~": "flight"}}
 {"id": "mail-send", "prompt": "Email prof.chen@mcmaster.ca to ask if office hours are still on Thursday", "tool": "send_email", "checks": {"to~": "prof.chen@mcmaster.ca", "body~": "office hours"}}
 {"id": "mail-reply", "prompt": "Write to sam.lee@example.com and say thanks for the notes", "tool": "send_email", "checks": {"to~": "sam.lee@example.com", "body~": "notes"}}
 {"id": "mail-noaddr", "prompt": "Send an email to my sister saying happy birthday", "tool": "send_email", "checks": {"asks_owner": true}}
@@ -16,3 +16,8 @@
 {"id": "task-not-mail", "prompt": "Add 'email the landlord' to my to-do list", "tool": "create_task", "checks": {"title~": "landlord"}}
 {"id": "chat-mail-talk", "prompt": "I get way too many emails these days", "tool": null, "checks": {}}
 {"id": "chat-cal-advice", "prompt": "What's a good way to organise my calendar?", "tool": null, "checks": {}}
+{"id": "live-mail-last", "prompt": "show me the last mail", "tool": "search_email", "checks": {"query": ""}}
+{"id": "live-mail-last-email", "prompt": "Show me my last email", "tool": "search_email", "checks": {"query": ""}}
+{"id": "mail-newest-message", "prompt": "read my newest message", "tool": "search_email", "checks": {"query!~": "null"}}
+{"id": "live-tasks-show", "prompt": "show me my tasks", "tool": "list_tasks", "checks": {}}
+{"id": "tasks-year", "prompt": "Which tasks do I have for this year?", "tool": "list_tasks", "checks": {"horizon": "year"}}

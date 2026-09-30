@@ -119,6 +119,7 @@ _DESCRIPTIONS = {
     "someday.",
     "list_reminders": "Show the owner's upcoming reminders, only when they ask what reminders "
     "they have.",
+    "list_tasks": "Show the owner's open tasks, only when they ask what tasks they have.",
     "search_email": "Search the owner's email when they ask about their mail or inbox.",
     "send_email": "Write an email the owner asked for. It's sent only after they approve it.",
     "list_events": "Show what's on the owner's calendar for a day or period.",
@@ -155,7 +156,7 @@ def system_prompt(now: datetime, tz: ZoneInfo) -> str:
 Call a tool ONLY when the owner asks you to:
 - remind them of something -> create_reminder
 - add something to their tasks or list -> create_task
-- tell them which reminders they have -> list_reminders
+- tell them which reminders they have -> list_reminders; which tasks -> list_tasks
 - look at their email -> search_email; write or send an email -> send_email
 - tell them what's on their calendar -> list_events; add something to it -> create_event
 - find when they're free -> find_free_time
@@ -196,6 +197,10 @@ term, year or someday.
 Owner: add book the dentist to this term
 -> create_task(title="book the dentist", horizon="term")""",
     "list_reminders": "Call list_reminders.",
+    "list_tasks": """Call list_tasks. Set `horizon` only if the owner names one: week, term, \
+year or someday.
+Owner: what's on my list for this term?
+-> list_tasks(horizon="term")""",
     "search_email": """Call search_email for the owner's message. Fill only the fields they \
 mention; leave the rest out.
 Owner: anything new from the bank?
@@ -256,41 +261,92 @@ ROUTES = (
     "create_reminder",
     "create_task",
     "list_reminders",
+    "list_tasks",
     "search_email",
     "send_email",
     "list_events",
     "create_event",
     "find_free_time",
 )
-ROUTE_FORMAT = {
-    "type": "object",
-    "properties": {"action": {"type": "string", "enum": list(ROUTES)}},
-    "required": ["action"],
+_ROUTE_RULES = {
+    "create_reminder": "they ask to be reminded of something",
+    "create_task": "they ask to add something to their tasks or to-do list",
+    "list_reminders": "they ask which reminders they have",
+    "list_tasks": "they ask to see which tasks or to-dos they have",
+    "search_email": "they want to see, read, check or search their email, mail, inbox or "
+    "messages: the latest mail, new mail, mail from someone or about something",
+    "send_email": "they ask to write, draft, send or reply to an email",
+    "list_events": "they ask what is on their calendar or schedule, or about their meetings or "
+    "events",
+    "create_event": "they ask to put an event, meeting or appointment on their calendar, or to "
+    "book or schedule one",
+    "find_free_time": "they ask when they are free or available, or to find time for something",
 }
-ROUTER_PROMPT = """Classify the owner's message for a personal assistant. Answer only with JSON \
-{"action": "..."}.
-- "create_reminder": they ask to be reminded of something
-- "create_task": they ask to add something to their tasks or to-do list
-- "list_reminders": they ask which reminders they have
-- "search_email": they ask about their email or inbox: new mail, mail from someone or about \
-something
-- "send_email": they ask to write, draft, send or reply to an email
-- "list_events": they ask what is on their calendar or schedule, or about their meetings or events
-- "create_event": they ask to put an event, meeting or appointment on their calendar, or to book \
-or schedule one
-- "find_free_time": they ask when they are free or available, or to find time for something
-- "reply": anything else: greetings, thanks, small talk, questions, maths, explanations, advice, \
-jokes. Also "reply" when they only talk about reminders, tasks, email or their calendar without \
-asking you to do something, or say not to do something."""
+_REPLY_RULE = """- "reply": anything else: greetings, thanks, small talk, questions, maths, \
+explanations, advice, jokes. Also "reply" when they only talk about reminders, tasks, email or \
+their calendar without asking you to do something, or say not to do something."""
+
+# Topic words. Measured Sep 30 (a live miss): llama3.2:3b sends "show me …" to whichever list
+# route it sees first, whatever follows ("show me the last mail" -> list_reminders, and once
+# list_tasks existed, -> list_tasks). But people asking for these tools name the topic: every
+# reminder (17), task (10) and email (9) prompt in the three golden sets contains one of these
+# words. Without one, the routes aren't offered at all: not in the prompt (dropping them only from
+# the enum made the model finish "list_" as another list route) and not in the schema. Calendar
+# requests are too varied ("am I free Friday?", "what have I got on Thursday?") to guard this way.
+_REMINDER_WORDS = re.compile(r"\bremind|\b(?:ping|nudge|alert) me\b", re.IGNORECASE)
+_TASK_WORDS = re.compile(r"\btasks?\b|\bto-?dos?\b|\bto do\b|\blist\b", re.IGNORECASE)
+_MAIL_WORDS = re.compile(r"mail|inbox|\bmessages?\b|@", re.IGNORECASE)
+_ROUTE_NEEDS = {
+    "create_reminder": _REMINDER_WORDS,
+    "list_reminders": re.compile(r"\bremind", re.IGNORECASE),
+    "create_task": _TASK_WORDS,
+    "list_tasks": _TASK_WORDS,
+    "search_email": _MAIL_WORDS,
+    "send_email": _MAIL_WORDS,
+}
 
 
-def parse_route(content: str) -> str:
+def routes_for(text: str) -> tuple[str, ...]:
+    """The routes this message can plausibly take (see _ROUTE_NEEDS)."""
+    return tuple(r for r in ROUTES if (need := _ROUTE_NEEDS.get(r)) is None or need.search(text))
+
+
+def router_prompt(routes: tuple[str, ...] = ROUTES) -> str:
+    lines = [f'- "{r}": {_ROUTE_RULES[r]}' for r in routes if r in _ROUTE_RULES]
+    return (
+        "Classify the owner's message for a personal assistant. Answer only with JSON "
+        '{"action": "..."}.\n' + "\n".join(lines) + "\n" + _REPLY_RULE
+    )
+
+
+def route_format(routes: tuple[str, ...] = ROUTES) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {"action": {"type": "string", "enum": list(routes)}},
+        "required": ["action"],
+    }
+
+
+ROUTER_PROMPT = router_prompt()
+ROUTE_FORMAT = route_format()
+
+
+def parse_route(content: str, routes: tuple[str, ...] = ROUTES) -> str:
     """The router's JSON -> a route; anything unexpected falls back to a plain reply."""
     try:
         action = json.loads(content).get("action")
     except (json.JSONDecodeError, AttributeError):
         return "reply"
-    return action if action in ROUTES else "reply"
+    return action if action in routes else "reply"
+
+
+_PLACEHOLDERS = {"", "null", "none", "nil", "n/a", "na", "undefined", "unknown"}
+
+
+def _placeholder(value: Any) -> bool:
+    """llama3.2:3b fills fields it doesn't need with the *string* "null" (live, Sep 30: "show me
+    the last mail" searched `from:null null`). Such values mean "not given"."""
+    return value is None or (isinstance(value, str) and value.strip().lower() in _PLACEHOLDERS)
 
 
 def resolve(
@@ -306,11 +362,14 @@ def resolve(
     tool = tools.get(name)
     if tool is None:
         raise ResolveError(f"There is no tool called {name!r}. Reply in plain text instead.")
+    arguments = {k: v for k, v in arguments.items() if not _placeholder(v)}
     try:
         if name == "create_reminder":
             arguments = _reminder_args(arguments, now, tz)
         elif name == "create_task":
             arguments = _task_args(arguments)
+        elif name == "list_tasks":
+            arguments = {k: v for k, v in _task_args(arguments).items() if k == "horizon"}
         elif name == "search_email":
             arguments = _search_args(arguments)
         elif name == "send_email":
@@ -435,4 +494,6 @@ def _task_args(arguments: dict[str, Any]) -> dict[str, Any]:
     args = {k: v for k, v in arguments.items() if k in known and v not in (None, "")}
     if isinstance(args.get("horizon"), str):
         args["horizon"] = args["horizon"].strip().lower().removeprefix("this ")
+        if args["horizon"] in ("all", "any", "none"):  # "all my tasks": no filter
+            del args["horizon"]
     return args

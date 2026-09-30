@@ -205,12 +205,14 @@ class LoopAgent:
         yield MessageDone(message_id=new_id(), ttft_ms=_ms(started, first_token), tokens=tokens)
 
     async def _route(self, text: str) -> str:
+        routes = llm_tools.routes_for(text)  # e.g. no reminder routes without a "remind" word
         messages = [
-            LLMMessage(role="system", content=llm_tools.ROUTER_PROMPT),
+            LLMMessage(role="system", content=llm_tools.router_prompt(routes)),
             LLMMessage(role="user", content=text),
         ]
-        parts = [c.text async for c in self._llm.chat(messages, json_schema=llm_tools.ROUTE_FORMAT)]
-        return llm_tools.parse_route("".join(parts))
+        schema = llm_tools.route_format(routes)
+        parts = [c.text async for c in self._llm.chat(messages, json_schema=schema)]
+        return llm_tools.parse_route("".join(parts), routes)
 
     async def _collect(self, messages: Sequence[LLMMessage], specs: list[ToolSpec]) -> _Reply:
         reply = _Reply()

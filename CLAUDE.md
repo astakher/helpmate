@@ -81,6 +81,12 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   allows that row only for the API process.
 - Small models invent email addresses ("mom@example.com"): `send_email` keeps only addresses the
   owner typed (`resolve(..., said=text)`), otherwise the agent asks.
+- llama3.2:3b routes "show me …" to the first list route it sees, and writes the *string* "null"
+  into fields it doesn't need (Gmail then searched `from:null null`). Fixes: topic words decide which
+  routes the router is offered (`routes_for`), and `resolve()` drops placeholder values. A benchmark
+  `~` (contains) check can pass garbage; add a `!~` check for it.
+- The benchmark must not send `keep_alive`: its "10m" overrode OLLAMA_KEEP_ALIVE=30m, so the app's
+  next message after a run paid a ~5 s model reload.
 
 ## Status (update as phases land)
 - Done: Phase 0–2 (repo, CI, contract v0.1, walking skeleton), benchmark script, Phase 4 web
@@ -126,9 +132,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   with `scripts/google_auth.py` (scopes `gmail.readonly`, `gmail.send`, `calendar.events`). Tools:
   `search_email`, `list_events`, `find_free_time` (read-only), plus `send_email` and `create_event`
   (risk external, approval card; the email card shows the whole message, the event card shows
-  overlaps as `Proposal.warnings`). Router has 9 routes: seed 93% / held-out 100% / connectors 94%,
-  args 100%. Live on the owner's account: ~2 s per read. Fakes (`adapters/fakes/connectors.py`)
-  otherwise.
+  overlaps as `Proposal.warnings`), and `list_tasks`. Router has 10 routes with topic-word guards
+  (`llm_tools.routes_for`): seed 100% / held-out 100% / connectors 91% (23), args 100%. Live on the
+  owner's account: ~2 s per read. Fakes (`adapters/fakes/connectors.py`) otherwise.
 - Next: Phase 8 Playwright E2E, midterm design doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
