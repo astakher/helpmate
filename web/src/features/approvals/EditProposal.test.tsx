@@ -31,6 +31,16 @@ describe("schemaFields", () => {
       { name: "due_at", label: "Due At", kind: "datetime", required: false },
     ]);
   });
+
+  it("reads lists of strings and multi-line text", () => {
+    const email = TOOLS.find((t) => t.name === "send_email")!;
+    expect(schemaFields(email.parameters).map((f) => [f.name, f.kind])).toEqual([
+      ["to", "list"],
+      ["cc", "list"],
+      ["subject", "text"],
+      ["body", "multiline"],
+    ]);
+  });
 });
 
 describe("Edit then approve", () => {
@@ -49,5 +59,34 @@ describe("Edit then approve", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent("Done");
     expect(db.tasks.map((t) => [t.title, t.horizon])).toEqual([["read chapter 4", "week"]]);
+  });
+
+  it("edits an email's recipients as a list and its body as multi-line text", async () => {
+    const email: Proposal = {
+      ...task,
+      id: "p-email",
+      tool: "send_email",
+      title: "Email to jo@example.com",
+      summary: "Running late",
+      args: { to: ["jo@example.com"], cc: [], subject: "Running late", body: "Hi Jo" },
+      risk: "external",
+    };
+    db.proposals.push({ ...email });
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<ProposalCard proposal={email} />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const to = screen.getByLabelText("To");
+    expect(to).toHaveValue("jo@example.com");
+    await user.type(to, ", sam@example.com");
+    const body = screen.getByLabelText("Body");
+    expect(body.tagName).toBe("TEXTAREA");
+    await user.type(body, "{enter}See you at 5.");
+    expect(await axeViolations(container)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Save and approve" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Sent to jo@example.com, sam@example.com");
+    const saved = db.proposals.find((p) => p.id === "p-email")!;
+    expect(saved.args).toMatchObject({ to: ["jo@example.com", "sam@example.com"], cc: [], body: "Hi Jo\nSee you at 5." });
   });
 });

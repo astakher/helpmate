@@ -7,6 +7,11 @@ simpler, easier-to-fill versions, and `resolve()` turns its call into canonical 
 
 - create_reminder takes the owner's time words in `when` ("in 10 minutes", "Friday at 3pm") plus
   enum fields `repeat`/`weekday`, and when.py computes `due_at` and the RRULE in code.
+- The calendar tools take time words too ("tomorrow afternoon", "Friday 2 to 4pm", "this week"),
+  and search_email takes plain fields (sender, about, unread_only, days) that become a Gmail query
+  here, so the model never writes dates or search syntax.
+- send_email only accepts addresses the owner actually typed (`said`): a small model will happily
+  invent "mom@example.com". Missing ones raise NeedsOwner, which is asked back, not retried.
 - The system prompt says exactly when to use a tool and when to just reply, with examples that
   are deliberately NOT the benchmark's prompts.
 
@@ -19,19 +24,34 @@ a no-tools classification step first (ROUTER_PROMPT + ROUTE_FORMAT, see below).
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError
 
 from helpmate.agent.tools import CreateTaskArgs, ToolRegistry
-from helpmate.agent.when import RRULE_DAYS, WEEKDAYS, UnclearTime, parse_when
+from helpmate.agent.when import (
+    RRULE_DAYS,
+    WEEKDAYS,
+    UnclearTime,
+    parse_range,
+    parse_span,
+    parse_when,
+)
 from helpmate.domain.models import ToolSpec
+
+DEFAULT_EVENT_MINUTES = 60
 
 
 class ResolveError(ValueError):
     """The model's call can't become valid canonical args. The message is written for the model."""
+
+
+class NeedsOwner(ResolveError):
+    """Only the owner can fix this (e.g. an email address they didn't give). Retrying the model
+    won't help, so the agent asks the owner. The message is written for the owner."""
 
 
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -51,14 +71,68 @@ class ReminderCall(BaseModel):
     weekday: Weekday | None = Field(default=None, description="For repeat=weekly: which day")
 
 
+class EmailSearchCall(BaseModel):
+    sender: str | None = Field(
+        default=None, description="Only mail from this person, company or address, e.g. 'alice'"
+    )
+    about: str | None = Field(default=None, description="Words the mail is about, e.g. 'invoice'")
+    unread_only: bool = Field(default=False, description="Only unread / new mail")
+    days: int | None = Field(default=None, description="Only mail from the last N days")
+
+
+class EmailCall(BaseModel):
+    to: list[str] = Field(description="Recipient email addresses, exactly as the owner typed them")
+    subject: str = Field(description="A short subject line")
+    body: str = Field(description="The complete email, ready to send")
+
+
+class EventsCall(BaseModel):
+    when: str = Field(
+        description="The owner's words for the period, e.g. 'today', 'tomorrow', 'Friday', "
+        "'this week', 'next week'"
+    )
+
+
+class EventCall(BaseModel):
+    title: str = Field(description="What the event is, e.g. 'lunch with Sam'")
+    when: str = Field(
+        description="The owner's time words copied exactly, e.g. 'tomorrow at 3pm', "
+        "'Friday 2 to 4pm'. Never convert them to a date yourself."
+    )
+    duration_minutes: int | None = Field(
+        default=None, description="Only if the owner says how long it lasts"
+    )
+    location: str | None = Field(default=None, description="Only if the owner says where")
+
+
+class FreeTimeCall(BaseModel):
+    when: str = Field(
+        default="this week",
+        description="The owner's words for the period to search, e.g. 'tomorrow', 'this week'",
+    )
+    duration_minutes: int = Field(default=60, description="How long they need, in minutes")
+
+
 _DESCRIPTIONS = {
     "create_reminder": "Set a reminder the owner asked for. It is pushed to their phone.",
     "create_task": "Add a task the owner asked for to a horizon: week (default), term, year or "
     "someday.",
     "list_reminders": "Show the owner's upcoming reminders, only when they ask what reminders "
     "they have.",
+    "search_email": "Search the owner's email when they ask about their mail or inbox.",
+    "send_email": "Write an email the owner asked for. It's sent only after they approve it.",
+    "list_events": "Show what's on the owner's calendar for a day or period.",
+    "create_event": "Add an event the owner asked for to their calendar.",
+    "find_free_time": "Find when the owner is free for a given length of time.",
 }
-_LLM_ARGS: dict[str, type[BaseModel]] = {"create_reminder": ReminderCall}
+_LLM_ARGS: dict[str, type[BaseModel]] = {
+    "create_reminder": ReminderCall,
+    "search_email": EmailSearchCall,
+    "send_email": EmailCall,
+    "list_events": EventsCall,
+    "create_event": EventCall,
+    "find_free_time": FreeTimeCall,
+}
 
 
 def specs(tools: ToolRegistry) -> list[ToolSpec]:
@@ -82,6 +156,9 @@ Call a tool ONLY when the owner asks you to:
 - remind them of something -> create_reminder
 - add something to their tasks or list -> create_task
 - tell them which reminders they have -> list_reminders
+- look at their email -> search_email; write or send an email -> send_email
+- tell them what's on their calendar -> list_events; add something to it -> create_event
+- find when they're free -> find_free_time
 For everything else (greetings, thanks, small talk, general knowledge, maths, explanations, \
 jokes, questions about how something works) reply in plain text and call NO tool. If the owner \
 says not to do something, don't do it.
@@ -105,6 +182,57 @@ Owner: what's 12 times 12?
 Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."""
 
 
+_INTRO = "You are HelpMate, a concise personal assistant running on the owner's laptop."
+_TOOL_RULES = {
+    "create_reminder": """Call create_reminder for the owner's message. Copy their time words into \
+`when` exactly as they said them; never work out dates or times yourself. Set `repeat` only if \
+they say every, each or daily.
+Owner: remind me to feed the cat in 20 minutes
+-> create_reminder(text="feed the cat", when="in 20 minutes")
+Owner: every Tuesday at 6pm remind me to take the bins out
+-> create_reminder(text="take the bins out", when="6pm", repeat="weekly", weekday="tuesday")""",
+    "create_task": """Call create_task for the owner's message. `horizon` is week (the default), \
+term, year or someday.
+Owner: add book the dentist to this term
+-> create_task(title="book the dentist", horizon="term")""",
+    "list_reminders": "Call list_reminders.",
+    "search_email": """Call search_email for the owner's message. Fill only the fields they \
+mention; leave the rest out.
+Owner: anything new from the bank?
+-> search_email(sender="bank", unread_only=true)
+Owner: find the email about the field trip form from last week
+-> search_email(about="field trip form", days=7)""",
+    "send_email": """Call send_email for the owner's message. Use only email addresses the owner \
+wrote; never make one up. Write the whole email in `body`, friendly and short, in the owner's \
+voice, without a signature name.
+Owner: email jo@example.com to say I'll be 10 minutes late
+-> send_email(to=["jo@example.com"], subject="Running late", body="Hi Jo, I'm running about \
+10 minutes late. See you soon!")""",
+    "list_events": """Call list_events. Copy the owner's words for the day or period into \
+`when`.
+Owner: what have I got on Thursday?
+-> list_events(when="Thursday")""",
+    "create_event": """Call create_event for the owner's message. Copy their time words into \
+`when` exactly; never work out dates yourself. Set `duration_minutes` only if they say how long.
+Owner: put lunch with Sam on my calendar tomorrow at 12:30
+-> create_event(title="lunch with Sam", when="tomorrow at 12:30")
+Owner: book the gym Saturday 10 to 11:30am
+-> create_event(title="gym", when="Saturday 10 to 11:30am")""",
+    "find_free_time": """Call find_free_time. Copy the owner's words for the period into `when` \
+and put how long they need in `duration_minutes`.
+Owner: when am I free for two hours next week?
+-> find_free_time(when="next week", duration_minutes=120)""",
+}
+
+
+def tool_prompt(name: str, now: datetime, tz: ZoneInfo) -> str:
+    """For a routed call: only the chosen tool's rules and examples (a 3B model copes better with
+    one tool's instructions than with all of them), clock last as in system_prompt()."""
+    local = now.astimezone(tz)
+    rules = _TOOL_RULES.get(name, f"Call {name} for the owner's message.")
+    return f"{_INTRO}\n\n{rules}\n\nNow: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
+
+
 def reply_prompt(now: datetime, tz: ZoneInfo) -> str:
     """For plain replies after routing (no tools attached). Deliberately has no example replies:
     the tool prompt's "Good morning!" example was echoed back to "thanks, you're great"."""
@@ -112,7 +240,8 @@ def reply_prompt(now: datetime, tz: ZoneInfo) -> str:
     return (
         "You are HelpMate, a friendly, concise personal assistant running on the owner's laptop. "
         "Answer the owner's message directly in at most three sentences. You can set reminders, "
-        "add tasks and list reminders when they ask; there's no need to offer that every time. "
+        "add tasks, search and send email and manage their calendar when they ask; there's no "
+        "need to offer that every time. "
         f"Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
     )
 
@@ -122,7 +251,17 @@ def reply_prompt(now: datetime, tz: ZoneInfo) -> str:
 # matter what the system prompt said. So step 1 classifies the message with NO tools attached,
 # using Ollama structured output; step 2 either replies without tools or offers only that tool.
 
-ROUTES = ("reply", "create_reminder", "create_task", "list_reminders")
+ROUTES = (
+    "reply",
+    "create_reminder",
+    "create_task",
+    "list_reminders",
+    "search_email",
+    "send_email",
+    "list_events",
+    "create_event",
+    "find_free_time",
+)
 ROUTE_FORMAT = {
     "type": "object",
     "properties": {"action": {"type": "string", "enum": list(ROUTES)}},
@@ -131,11 +270,18 @@ ROUTE_FORMAT = {
 ROUTER_PROMPT = """Classify the owner's message for a personal assistant. Answer only with JSON \
 {"action": "..."}.
 - "create_reminder": they ask to be reminded of something
-- "create_task": they ask to add something to their tasks or list
+- "create_task": they ask to add something to their tasks or to-do list
 - "list_reminders": they ask which reminders they have
+- "search_email": they ask about their email or inbox: new mail, mail from someone or about \
+something
+- "send_email": they ask to write, draft, send or reply to an email
+- "list_events": they ask what is on their calendar or schedule, or about their meetings or events
+- "create_event": they ask to put an event, meeting or appointment on their calendar, or to book \
+or schedule one
+- "find_free_time": they ask when they are free or available, or to find time for something
 - "reply": anything else: greetings, thanks, small talk, questions, maths, explanations, advice, \
-jokes. Also "reply" when they only mention reminders or tasks without asking for one, or say not \
-to do something."""
+jokes. Also "reply" when they only talk about reminders, tasks, email or their calendar without \
+asking you to do something, or say not to do something."""
 
 
 def parse_route(content: str) -> str:
@@ -148,16 +294,33 @@ def parse_route(content: str) -> str:
 
 
 def resolve(
-    name: str, arguments: dict[str, Any], tools: ToolRegistry, now: datetime, tz: ZoneInfo
+    name: str,
+    arguments: dict[str, Any],
+    tools: ToolRegistry,
+    now: datetime,
+    tz: ZoneInfo,
+    said: str | None = None,
 ) -> dict[str, Any]:
-    """The model's call -> canonical args (JSON-ready), validated. Raises ResolveError."""
+    """The model's call -> canonical args (JSON-ready), validated. Raises ResolveError.
+    `said` is the owner's message: send_email recipients must appear in it."""
     tool = tools.get(name)
     if tool is None:
         raise ResolveError(f"There is no tool called {name!r}. Reply in plain text instead.")
-    if name == "create_reminder":
-        arguments = _reminder_args(arguments, now, tz)
-    elif name == "create_task":
-        arguments = _task_args(arguments)
+    try:
+        if name == "create_reminder":
+            arguments = _reminder_args(arguments, now, tz)
+        elif name == "create_task":
+            arguments = _task_args(arguments)
+        elif name == "search_email":
+            arguments = _search_args(arguments)
+        elif name == "send_email":
+            arguments = _email_args(arguments, said)
+        elif name in ("list_events", "find_free_time"):
+            arguments = _period_args(name, arguments, now, tz)
+        elif name == "create_event":
+            arguments = _event_args(arguments, now, tz)
+    except UnclearTime as exc:
+        raise ResolveError(f"{name}: {exc}") from exc
     try:
         return tool.args_model.model_validate(arguments).model_dump(mode="json")
     except ValidationError as exc:
@@ -191,6 +354,79 @@ def _reminder_args(arguments: dict[str, Any], now: datetime, tz: ZoneInfo) -> di
         "text": arguments.get("text", ""),
         "due_at": when.due_at.isoformat(),
         "recurrence": recurrence,
+    }
+
+
+def _search_args(arguments: dict[str, Any]) -> dict[str, Any]:
+    if arguments.get("query"):  # the canonical shape
+        return {"query": str(arguments["query"])}
+    terms = []
+    if sender := str(arguments.get("sender") or "").strip():
+        terms.append(f'from:"{sender}"' if " " in sender else f"from:{sender}")
+    if about := str(arguments.get("about") or "").strip():
+        terms.append(about)
+    if arguments.get("unread_only") in (True, "true"):
+        terms.append("is:unread")
+    days = arguments.get("days")
+    if isinstance(days, int | str) and str(days).isdigit() and int(days) > 0:
+        terms.append(f"newer_than:{int(days)}d")
+    return {"query": " ".join(terms)}
+
+
+_ADDRESS = re.compile(r"[^@\s<>,;()\[\]\"']+@[^@\s<>,;()\[\]\"']+\.[a-z]{2,}", re.IGNORECASE)
+
+
+def _email_args(arguments: dict[str, Any], said: str | None) -> dict[str, Any]:
+    def addresses(value: Any) -> list[str]:
+        items = value if isinstance(value, list) else [value] if value else []
+        return [a.lower().rstrip(".") for item in items for a in _ADDRESS.findall(str(item))]
+
+    to, cc = addresses(arguments.get("to")), addresses(arguments.get("cc"))
+    typed = {a.lower().rstrip(".") for a in _ADDRESS.findall(said)} if said is not None else None
+    if typed is not None:
+        to, cc = [a for a in to if a in typed], [a for a in cc if a in typed]
+        if not to and typed:
+            to = sorted(typed)  # the model dropped or mangled the address the owner gave
+    if not to:
+        raise NeedsOwner(
+            "Who should I send it to? Please include their email address, "
+            "e.g. 'email jo@example.com to say I'm running late'."
+        )
+    return {
+        "to": to,
+        "cc": cc,
+        "subject": arguments.get("subject") or "",
+        "body": arguments.get("body") or "",
+    }
+
+
+def _period_args(
+    name: str, arguments: dict[str, Any], now: datetime, tz: ZoneInfo
+) -> dict[str, Any]:
+    if arguments.get("start") and arguments.get("end"):  # the canonical shape
+        return arguments
+    default = "today" if name == "list_events" else "this week"
+    start, end = parse_range(str(arguments.get("when") or default), now, tz)
+    args: dict[str, Any] = {"start": start.isoformat(), "end": end.isoformat()}
+    if name == "find_free_time":
+        args["duration_minutes"] = arguments.get("duration_minutes") or 60
+    return args
+
+
+def _event_args(arguments: dict[str, Any], now: datetime, tz: ZoneInfo) -> dict[str, Any]:
+    if arguments.get("start") and arguments.get("end"):  # the canonical shape
+        return arguments
+    start, end = parse_span(str(arguments.get("when") or arguments.get("start") or ""), now, tz)
+    if end is None:
+        minutes = arguments.get("duration_minutes")
+        minutes = int(minutes) if str(minutes or "").isdigit() and int(minutes) > 0 else None
+        end = start + timedelta(minutes=minutes or DEFAULT_EVENT_MINUTES)
+    return {
+        "title": arguments.get("title") or "",
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "location": arguments.get("location") or None,
+        "description": arguments.get("description") or None,
     }
 
 

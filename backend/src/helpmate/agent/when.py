@@ -9,15 +9,20 @@ Understood (case-insensitive, combinable):
   in 10 minutes · in an hour · in half an hour · in two hours · in 3 days · 20 minutes from now
   at 5pm · 5:30 pm · 17:00 · noon · midnight · this morning/afternoon/evening · tonight
   today · tomorrow · day after tomorrow · (on|next) friday · every day/weekday · every monday
+  Oct 12 · 12th of October · 2026-10-12
   an ISO 8601 datetime (a naive one is read as the owner's local time)
 Anything else raises UnclearTime, whose message tells the model what to send instead.
+
+For the calendar: parse_range() reads a period ("tomorrow afternoon", "Friday", "this week",
+"next weekend", "the next 3 days") and parse_span() an event's start and end ("Friday 2 to 4pm",
+"tomorrow at 3pm for 2 hours").
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -55,6 +60,15 @@ _CLOCK = re.compile(
 _WEEKDAY = re.compile(
     r"\b(?P<every>every |each )?(?:on |next |this )?(?P<day>" + "|".join(WEEKDAYS) + r")s?\b"
 )
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september",
+           "october", "november", "december")  # fmt: skip
+_MON = r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?"
+_MON += r"|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+_DATE = re.compile(
+    rf"\b(?P<mon>{_MON})\.? (?P<d>\d{{1,2}})(?:st|nd|rd|th)?\b"
+    rf"|\b(?:the )?(?P<d2>\d{{1,2}})(?:st|nd|rd|th)? (?:of )?(?P<mon2>{_MON})\b"
+    r"|\b(?P<y>\d{4})-(?P<m>\d{2})-(?P<d3>\d{2})\b"
+)
 EXAMPLES = "'in 10 minutes', 'at 5pm', 'tomorrow at 9am', 'Friday at 3pm' or 'every Monday at 8am'"
 
 
@@ -88,6 +102,9 @@ def parse_when(words: str, now: datetime, tz: ZoneInfo, weekday: str | None = No
 
     hour, minute, exact_hour = _clock(phrase)
     day_offsets = _day_offsets(phrase)
+    on_date = _calendar_date(phrase, now_local.date())
+    if on_date is not None:
+        day_offsets = [(on_date - now_local.date()).days]
 
     if hour is None and day_offsets is None and target_weekday is None and recurrence is None:
         raise UnclearTime(
@@ -96,7 +113,7 @@ def parse_when(words: str, now: datetime, tz: ZoneInfo, weekday: str | None = No
     if hour is None:
         hour, minute, exact_hour = DEFAULT_HOUR, 0, True
 
-    if target_weekday is not None:
+    if target_weekday is not None and on_date is None:
         ahead = (WEEKDAYS.index(target_weekday) - now_local.weekday()) % 7
         day_offsets = [ahead, ahead + 7]
     elif day_offsets is None:
@@ -172,3 +189,116 @@ def _day_offsets(phrase: str) -> list[int] | None:
     if re.search(r"\btoday\b|\btonight\b|\bthis (morning|afternoon|evening)\b", phrase):
         return [0]
     return None
+
+
+def _calendar_date(phrase: str, today: date) -> date | None:
+    """'Oct 12', 'the 12th of October', '2026-10-12' -> that date (next year's if it's past)."""
+    match = _DATE.search(phrase)
+    if match is None:
+        return None
+    try:
+        if match["y"]:
+            return date(int(match["y"]), int(match["m"]), int(match["d3"]))
+        word = match["mon"] or match["mon2"]
+        month = next(i for i, name in enumerate(_MONTHS, 1) if name.startswith(word[:3]))
+        day = date(today.year, month, int(match["d"] or match["d2"]))
+        return day if day >= today else day.replace(year=today.year + 1)
+    except ValueError as exc:
+        raise UnclearTime(f"{match[0]!r} isn't a real date") from exc
+
+
+# --- Periods and event times (calendar tools) -----------------------------------------------
+
+_DAY_PARTS = {"morning": (6, 12), "afternoon": (12, 17), "evening": (17, 22), "tonight": (17, 24)}
+_NEXT_DAYS = re.compile(rf"\b(?:the )?(?:next|coming) (?P<n>{_NUM}|few|couple of) days\b")
+RANGE_EXAMPLES = "'today', 'tomorrow afternoon', 'Friday', 'Oct 12', 'this week' or 'next week'"
+
+
+def parse_range(words: str, now: datetime, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """A period in the owner's words -> (start, end) on whole local days, narrowed by a part of the
+    day ("tomorrow afternoon"). Periods under way ("this week", "the next 3 days") start at today's
+    midnight, so listing includes earlier events today; find_free_time skips the past itself."""
+    phrase = " ".join(re.sub(r"[,;!?]", " ", words.lower()).split())
+    today = now.astimezone(tz).date()
+    monday = today - timedelta(days=today.weekday())
+
+    def midnight(day: date) -> datetime:
+        return datetime.combine(day, time(0), tzinfo=tz)
+
+    if match := _NEXT_DAYS.search(phrase):
+        n = {"few": 3, "couple of": 2}.get(match["n"]) or _number(match["n"])
+        return midnight(today), midnight(today + timedelta(days=n + 1))
+    if re.search(r"\bnext week\b", phrase):
+        return midnight(monday + timedelta(days=7)), midnight(monday + timedelta(days=14))
+    if re.search(r"\bweekend\b", phrase):
+        saturday = monday + timedelta(days=5 + (7 if "next weekend" in phrase else 0))
+        return midnight(max(today, saturday)), midnight(saturday + timedelta(days=2))
+    if re.search(r"\bweek\b", phrase):  # this week, the rest of the week
+        return midnight(today), midnight(monday + timedelta(days=7))
+    if re.search(r"\bmonth\b", phrase):
+        first = today.replace(day=1)
+        following = (first + timedelta(days=32)).replace(day=1)
+        if "next month" in phrase:
+            return midnight(following), midnight((following + timedelta(days=32)).replace(day=1))
+        return midnight(today), midnight(following)
+
+    day = _calendar_date(phrase, today)
+    if day is None and (offsets := _day_offsets(phrase)) is not None:
+        day = today + timedelta(days=offsets[0])
+    if day is None and (weekday := _WEEKDAY.search(phrase)):
+        ahead = (WEEKDAYS.index(weekday["day"]) - today.weekday()) % 7
+        day = today + timedelta(days=ahead or (7 if f"next {weekday['day']}" in phrase else 0))
+    if day is None and any(re.search(rf"\b{part}\b", phrase) for part in _DAY_PARTS):
+        day = today  # "this afternoon" is caught above; a bare "afternoon" means today's
+    if day is None:
+        raise UnclearTime(
+            f"couldn't read a day or period from {words!r}. Send the owner's words, e.g. "
+            f"{RANGE_EXAMPLES}."
+        )
+    for part, (first_hour, last_hour) in _DAY_PARTS.items():
+        if re.search(rf"\b{part}\b", phrase):
+            end = midnight(day + timedelta(days=1)) if last_hour == 24 else None
+            return datetime.combine(day, time(first_hour), tzinfo=tz), end or datetime.combine(
+                day, time(last_hour), tzinfo=tz
+            )
+    return midnight(day), midnight(day + timedelta(days=1))
+
+
+_SPAN = re.compile(
+    r"\b(?:from |between )?(?P<h1>\d{1,2})(?::(?P<m1>\d{2}))?\s*(?P<ap1>am|pm)?"
+    r"\s*(?:-|–|to|until|till|and)\s*"
+    r"(?P<h2>\d{1,2})(?::(?P<m2>\d{2}))?\s*(?P<ap2>am|pm)\b"
+)
+_FOR = re.compile(
+    rf"\bfor (?:(?P<half>half an? hour)|(?P<n>{_NUM}) (?P<unit>min(?:ute)?s?|h(?:ou)?rs?)"
+    r"(?P<andhalf> and a half)?)\b"
+)
+
+
+def parse_span(words: str, now: datetime, tz: ZoneInfo) -> tuple[datetime, datetime | None]:
+    """An event's time -> (start, end). "Friday 2 to 4pm" and "at 3pm for 2 hours" give both;
+    plain "tomorrow at 3pm" gives end None (the caller picks a length)."""
+    phrase = words.lower().replace("a.m.", "am").replace("p.m.", "pm")
+    phrase = " ".join(re.sub(r"[,;!?]", " ", phrase).split())
+    if match := _SPAN.search(phrase):
+        h1, m1, h2, m2 = (int(match[k] or 0) for k in ("h1", "m1", "h2", "m2"))
+        if not (1 <= h1 <= 12 and 1 <= h2 <= 12 and m1 < 60 and m2 < 60):
+            raise UnclearTime(f"{match[0]!r} isn't a valid time range")
+        end_hour = h2 % 12 + (12 if match["ap2"] == "pm" else 0)
+        start_hour = h1 % 12 + (12 if (match["ap1"] or match["ap2"]) == "pm" else 0)
+        if not match["ap1"] and start_hour >= 12 and (start_hour, m1) >= (end_hour, m2):
+            start_hour -= 12  # "11 to 1pm" starts at 11am
+        start_words = f"at {start_hour % 12 or 12}:{m1:02d}{'am' if start_hour < 12 else 'pm'}"
+        start = parse_when(
+            f"{phrase[: match.start()]} {start_words} {phrase[match.end() :]}", now, tz
+        )
+        end = datetime.combine(start.due_at.date(), time(end_hour, m2), tzinfo=tz)
+        if end <= start.due_at:
+            raise UnclearTime(f"{match[0]!r} ends before it starts")
+        return start.due_at, end
+    length = None
+    if match := _FOR.search(phrase):
+        length = _relative_delta(match)
+        phrase = f"{phrase[: match.start()]} {phrase[match.end() :]}"
+    start = parse_when(phrase, now, tz).due_at
+    return start, start + length if length else None

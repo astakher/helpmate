@@ -1722,6 +1722,11 @@ components:
           - type: string
           - type: 'null'
           title: Preview
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
         risk:
           $ref: '#/components/schemas/Risk'
           default: write

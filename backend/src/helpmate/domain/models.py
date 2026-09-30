@@ -71,6 +71,9 @@ class Proposal(DomainModel):
     summary: str
     args: dict[str, Any]
     preview: str | None = None  # e.g. the full email body
+    # Things the owner should know before approving, e.g. "Overlaps Standup, 09:00-09:30".
+    # Added Sep 30, additive.
+    warnings: list[str] = Field(default_factory=list)
     risk: Risk = Risk.WRITE
     status: ProposalStatus = ProposalStatus.PENDING
     created_at: AwareDatetime

@@ -15,6 +15,8 @@ async def test_health_reports_every_seam_as_fake(client):
         "repo",
         "scheduler",
         "auth",
+        "mail",
+        "calendar",
         "notifier",
         "stt",
         "tts",
@@ -101,9 +103,21 @@ async def test_remember_files_a_suggestion_that_needs_approval(client, parse_sse
 
 async def test_tools_endpoint_exposes_argument_schemas(client):
     tools = {t["name"]: t for t in (await client.get("/api/tools")).json()}
-    assert set(tools) == {"create_reminder", "create_task", "list_reminders"}
+    assert set(tools) == {
+        "create_reminder",
+        "create_task",
+        "list_reminders",
+        "search_email",
+        "send_email",
+        "list_events",
+        "create_event",
+        "find_free_time",
+    }
     assert tools["list_reminders"]["read_only"] is True
     assert "due_at" in tools["create_reminder"]["parameters"]["properties"]
+    # the web Edit form reads these hints: a list field and a multi-line body
+    email = tools["send_email"]["parameters"]["properties"]
+    assert email["to"]["type"] == "array" and email["body"]["format"] == "multiline"
 
 
 async def test_unknown_session_is_404(client):

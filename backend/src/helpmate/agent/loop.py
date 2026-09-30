@@ -5,12 +5,18 @@ A working stand-in for Workstream A's agent loop, built on the pipeline measured
 docs/benchmarks/llama-tool-calling-fixes.md ("routed"):
 
 1. Route: classify the message with NO tools attached, via structured output
-   (reply | create_reminder | create_task | list_reminders).
+   (reply | one of llm_tools.ROUTES' tools).
 2. reply -> stream a plain answer (reply_prompt, recent chat history, no tools).
-   tool  -> call the model offering only that tool; turn its call into canonical args in code
-            (llm_tools.resolve); if they're invalid, send the problem back once.
+   tool  -> call the model offering only that tool, with only that tool's rules (tool_prompt);
+            turn its call into canonical args in code (llm_tools.resolve); if they're invalid,
+            send the problem back once. NeedsOwner (e.g. no email address) is asked back instead.
 3. The canonical call goes through the PolicyEngine exactly like the ScriptedAgent's: read-only
    tools run, every write becomes a proposal card. Nothing is written without approval.
+
+Read-only results (search_email, list_events, ...) go straight to the owner. They are never part
+of a routing or tool call (both see only the owner's current message); later plain replies may
+see them in chat history, but those have no tools. So text inside an email can't trigger a tool
+call (prompt injection), and every write still needs an approved card anyway.
 
 "remember that ..." files a memory suggestion, as in the ScriptedAgent.
 """
@@ -47,6 +53,15 @@ from helpmate.domain.models import (
 from helpmate.domain.ports import ChatRepo, Clock, LLMPort, MemoryRepo
 
 HISTORY_MESSAGES = 6  # earlier turns given to plain replies (routing and tool calls are 1-turn)
+_EXAMPLES = {  # shown when a request couldn't be turned into a tool call
+    "create_reminder": "'remind me to call mom tomorrow at 5pm'",
+    "create_task": "'add book the dentist to this term'",
+    "list_events": "'what's on my calendar tomorrow'",
+    "create_event": "'add lunch with Sam to my calendar Friday at 12:30'",
+    "find_free_time": "'when am I free for an hour this week'",
+    "search_email": "'any new emails from the school'",
+    "send_email": "'email jo@example.com to say I'm running late'",
+}
 _REMEMBER = re.compile(r"^(?:please )?remember(?: that)? (?P<fact>.{3,500})$", re.IGNORECASE)
 
 
@@ -129,7 +144,7 @@ class LoopAgent:
 
         specs = [s for s in llm_tools.specs(self._policy.tools) if s.name == route]
         messages = [
-            LLMMessage(role="system", content=llm_tools.system_prompt(now, self._tz)),
+            LLMMessage(role="system", content=llm_tools.tool_prompt(route, now, self._tz)),
             LLMMessage(role="user", content=text),
         ]
         reply = await self._collect(messages, specs)
@@ -140,7 +155,13 @@ class LoopAgent:
             return
 
         call = reply.calls[0]
-        args, error = self._resolve(call, now)
+        args, error = self._resolve(call, now, text)
+        if isinstance(error, llm_tools.NeedsOwner):  # only the owner can fix it: ask them
+            yield ToolResult(call_id=call.id, ok=False, summary=f"{call.name}: needs your input")
+            async for event in say(str(error)):
+                yield event
+            yield MessageDone(message_id=new_id(), ttft_ms=_ms(started, first_token), tokens=tokens)
+            return
         if error is not None:  # validate-and-retry, once
             messages += [
                 LLMMessage(role="assistant", content="", tool_calls=[call]),
@@ -153,13 +174,15 @@ class LoopAgent:
             retry = await self._collect(messages, specs)
             if retry.calls:
                 call = retry.calls[0]
-                args, error = self._resolve(call, now)
+                args, error = self._resolve(call, now, text)
 
         if args is None:
-            yield ToolResult(call_id=call.id, ok=False, summary=error or "invalid arguments")
+            yield ToolResult(call_id=call.id, ok=False, summary=str(error or "invalid arguments"))
             async for event in say(
-                "Sorry, I couldn't work out the details. Could you rephrase it, for example "
-                "'remind me to call mom tomorrow at 5pm'?"
+                str(error)
+                if isinstance(error, llm_tools.NeedsOwner)
+                else "Sorry, I couldn't work out the details. Could you rephrase it, for example "
+                f"{_EXAMPLES.get(route, _EXAMPLES['create_reminder'])}?"
             ):
                 yield event
             yield MessageDone(message_id=new_id(), ttft_ms=_ms(started, first_token), tokens=tokens)
@@ -172,6 +195,8 @@ class LoopAgent:
             yield ProposalCreated(proposal=outcome.proposal)
             p = outcome.proposal
             answer = f"I've prepared this: {p.title} ({p.summary}). Approve the card to go ahead."
+            if p.warnings:
+                answer += " Heads up: " + "; ".join(p.warnings) + "."
         else:
             yield ToolResult(call_id=canonical.id, ok=outcome.ok, summary=outcome.summary)
             answer = outcome.summary
@@ -195,11 +220,15 @@ class LoopAgent:
             reply.output_tokens = chunk.output_tokens or reply.output_tokens
         return reply
 
-    def _resolve(self, call: ToolCall, now: datetime) -> tuple[dict[str, Any] | None, str | None]:
+    def _resolve(
+        self, call: ToolCall, now: datetime, said: str
+    ) -> tuple[dict[str, Any] | None, llm_tools.ResolveError | None]:
         try:
-            args = llm_tools.resolve(call.name, call.arguments, self._policy.tools, now, self._tz)
+            args = llm_tools.resolve(
+                call.name, call.arguments, self._policy.tools, now, self._tz, said=said
+            )
         except llm_tools.ResolveError as exc:
-            return None, str(exc)
+            return None, exc
         return args, None
 
     async def _history(self, session_id: str, text: str) -> list[LLMMessage]:

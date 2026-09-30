@@ -1029,6 +1029,8 @@ export interface components {
             };
             /** Preview */
             preview?: string | null;
+            /** Warnings */
+            warnings?: string[];
             /** @default write */
             risk: components["schemas"]["Risk"];
             /** @default pending */

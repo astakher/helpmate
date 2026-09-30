@@ -24,12 +24,14 @@ Team workstreams: **A** agent/LLM/memory/eval · **B** backend data/integrations
 - `backend/` — FastAPI core plane (uv, Python 3.12). `src/helpmate/domain/ports.py` = the seams;
   `container.py` picks adapters from `HELPMATE_*` env; `agent/policy.py` = approval invariant;
   `adapters/fakes/` = a fake for every port; `eval/bench.py` = model benchmark (`helpmate-bench`).
-- `services/speech/` — separate speech service on :8001 (own uv env). Fake engine today;
-  real faster-whisper + kokoro-onnx is Phase 5.
+- `services/speech/` — separate speech service on :8001 (own uv env). Fake engine, or real
+  faster-whisper + kokoro-onnx with `SPEECH_ENGINE=real` (Phase 5).
 - `web/` — React 19 + TS + Vite PWA. `src/api/schema.d.ts` is GENERATED; `src/mocks/` = MSW
   handlers used by `npm run dev:mock` and by all unit tests; `src/sw.ts` = service worker (push + ack).
 - `contracts/openapi.yaml` — GENERATED from backend schemas; CI fails on drift.
 - `infra/docker-compose.yml` — pgvector Postgres + SeaweedFS, ports bound to 127.0.0.1.
+- `data/` — git-ignored secrets: the Google OAuth client + token, and the 2FA secret (`auth.json`)
+  once `HELPMATE_AUTH=totp` is on. Never print or commit its files.
 
 ## Commands
 ```powershell
@@ -73,6 +75,12 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   Apple's (COMODO ECC), so iPhone pushes failed while Chrome's (FCM) worked.
 - faster-whisper must load with `local_files_only=True`: otherwise it asks huggingface.co for a newer
   model at every start and keeps the connection open (caught by `scripts/privacy_check.py`).
+- Google OAuth apps in "Testing" get 7-day refresh tokens; the adapters turn that into
+  `GoogleNotConnected` ("re-run google_auth.py"), which read tools report and card checks show.
+  Reverse DNS can't tell FCM push from Gmail/Calendar (both `*.1e100.net`), so the privacy check
+  allows that row only for the API process.
+- Small models invent email addresses ("mom@example.com"): `send_email` keeps only addresses the
+  owner typed (`resolve(..., said=text)`), otherwise the agent asks.
 
 ## Status (update as phases land)
 - Done: Phase 0–2 (repo, CI, contract v0.1, walking skeleton), benchmark script, Phase 4 web
@@ -113,8 +121,15 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - **Postgres works** (Sep 30; stand-in for B, `adapters/postgres_repos.py` + Alembic `migrations/`):
   pgvector/pgvector:0.8.6-pg17 in Docker on 127.0.0.1, JSONB rows + typed columns, same contract suite
   as the fakes (16/16 with `HELPMATE_TEST_DATABASE_URL`), data survives API restarts.
-- Next: Gmail + Google Calendar (waiting on the owner's Google Cloud OAuth client), Phase 8 Playwright
-  E2E, midterm design doc + 3-min video ≈ Oct 26.
+- **Gmail + Google Calendar work** (Sep 30; stand-ins for B `adapters/gmail.py`, `gcal.py`,
+  `google_oauth.py` and for A's tools): `HELPMATE_MAIL=gmail`, `HELPMATE_CALENDAR=google`, connected
+  with `scripts/google_auth.py` (scopes `gmail.readonly`, `gmail.send`, `calendar.events`). Tools:
+  `search_email`, `list_events`, `find_free_time` (read-only), plus `send_email` and `create_event`
+  (risk external, approval card; the email card shows the whole message, the event card shows
+  overlaps as `Proposal.warnings`). Router has 9 routes: seed 93% / held-out 100% / connectors 94%,
+  args 100%. Live on the owner's account: ~2 s per read. Fakes (`adapters/fakes/connectors.py`)
+  otherwise.
+- Next: Phase 8 Playwright E2E, midterm design doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
@@ -135,11 +150,15 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   skip the model when `intent_parser` already matches (cards 2–3 s → instant); grow the golden set
   to ≥ 60; try `qwen3:4b-instruct`.
   (Done as stand-ins: benchmark `rem-at` fix, thinking-model TTFT, held-out set, `--pipeline`.)
-- [A] (stand-in) "permitted" permission tier (empty by default); calendar conflict/free-time tools;
-  golden set ≥ 60, recall@5, 10 prompt-injection cases.
+- [A] (stand-in) "permitted" permission tier (empty by default); golden set ≥ 60 (now 49 over three
+  sets), recall@5, 10 prompt-injection cases (email bodies are the obvious source); count extra or
+  failed tool calls in the benchmark. (Done: calendar conflict + free-time tools.)
 - [B] Postgres: stand-in done (all repos, Alembic 0001, contract suite green). B owns the schema from
   here (FKs, retention, backups + restore drill); the durable job queue (`scheduler=pg`, SKIP LOCKED)
-  is still unbuilt. Read-only Gmail/Calendar by project week 4.
+  is still unbuilt.
+- [B] Gmail/Calendar: stand-in done (Sep 30). B moves the Google token from `data/google_token.json`
+  to Postgres (encrypted), publishes the OAuth app (Testing mode = 7-day sign-ins), and adds reply
+  threading (`EmailDraft.in_reply_to`) and ICS import.
 - [B] Real login: stand-in `HELPMATE_AUTH=totp` works (Sep 30; `adapters/totp_auth.py`, password via
   `scripts/set_password.py`). B moves users/secrets/sessions to Postgres and adds recovery codes.
   With `dev` auth 2FA can't be on and `tailscale funnel` stays off. See plan §9 item 11.

@@ -2,6 +2,12 @@ import type { FormEvent } from "react";
 import type { Proposal, ToolInfo } from "../../api/types";
 import { schemaFields, toLocalInput } from "./schemaFields";
 
+const splitList = (raw: string) =>
+  raw
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 /** Edit-then-approve: the form is generated from the tool's argument schema. */
 export function EditProposalForm({
   proposal,
@@ -25,6 +31,7 @@ export function EditProposalForm({
     for (const f of fields) {
       const raw = form.get(f.name);
       if (f.kind === "bool") args[f.name] = raw === "on";
+      else if (f.kind === "list") args[f.name] = splitList(String(raw ?? ""));
       else if (raw === null || raw === "") args[f.name] = null;
       else if (f.kind === "number") args[f.name] = Number(raw);
       else if (f.kind === "datetime") args[f.name] = new Date(String(raw)).toISOString();
@@ -45,6 +52,25 @@ export function EditProposalForm({
             </label>
           );
         }
+        if (f.kind === "list") {
+          const hint = `${proposal.id}-${f.name}-hint`;
+          return (
+            <div key={f.name} className="field">
+              <label>
+                {f.label}
+                <input
+                  {...common}
+                  type="text"
+                  aria-describedby={hint}
+                  defaultValue={Array.isArray(value) ? value.join(", ") : ""}
+                />
+              </label>
+              <span id={hint} className="muted">
+                Separate with commas
+              </span>
+            </div>
+          );
+        }
         return (
           <label key={f.name}>
             {f.label}
@@ -59,6 +85,8 @@ export function EditProposalForm({
               </select>
             ) : f.kind === "datetime" ? (
               <input {...common} type="datetime-local" defaultValue={toLocalInput(value)} />
+            ) : f.kind === "multiline" ? (
+              <textarea {...common} rows={8} defaultValue={value == null ? "" : String(value)} />
             ) : (
               <input
                 {...common}

@@ -2,21 +2,33 @@
 
 A tool is a pydantic args model plus an async `execute`. `read_only` tools run immediately;
 every other tool goes through the policy engine and becomes a Proposal first.
-Workstream A adds tools here (file_item, draft_email, …); B's connectors back some of them.
+Workstream A adds tools here (file_item, …); B's connectors (MailPort, CalendarPort) back the
+mail and calendar tools, which work the same against the fakes and against Google.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, datetime, time, timedelta
+from typing import Annotated, Any, Self
 from zoneinfo import ZoneInfo
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, model_validator
 
-from helpmate.domain.models import Horizon, Reminder, ReminderStatus, Risk, Task, ToolSpec, new_id
-from helpmate.domain.ports import Clock, Repositories, SchedulerPort
+from helpmate.agent.free_time import conflicts, free_slots, is_all_day
+from helpmate.domain.models import (
+    CalendarEvent,
+    EmailDraft,
+    Horizon,
+    Reminder,
+    ReminderStatus,
+    Risk,
+    Task,
+    ToolSpec,
+    new_id,
+)
+from helpmate.domain.ports import CalendarPort, Clock, MailPort, Repositories, SchedulerPort
 
 
 @dataclass(frozen=True)
@@ -25,6 +37,9 @@ class ToolDeps:
     scheduler: SchedulerPort
     clock: Clock
     tz: ZoneInfo
+    mail: MailPort
+    calendar: CalendarPort
+    day_hours: tuple[int, int] = (9, 18)  # local hours find_free_time may offer
 
 
 @dataclass(frozen=True)
@@ -37,6 +52,7 @@ class Tool[A: BaseModel]:
     execute: Callable[[A, ToolDeps], Awaitable[str]]  # -> human-readable result
     risk: Risk = Risk.WRITE
     preview: Callable[[A], str | None] | None = None  # e.g. full email body for the card
+    check: Callable[[A, ToolDeps], Awaitable[list[str]]] | None = None  # -> card warnings
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -70,6 +86,32 @@ class ToolRegistry:
 
 def fmt_local(when: datetime, tz: ZoneInfo) -> str:
     return when.astimezone(tz).strftime("%a %b %d at %H:%M")
+
+
+def fmt_span(start: datetime, end: datetime, tz: ZoneInfo) -> str:
+    """'Tue Oct 06 14:00-15:30'. Whole days read 'Tue Oct 06' or 'Mon Oct 05 - Sun Oct 11'."""
+    start, end = start.astimezone(tz), end.astimezone(tz)
+    if start.time() == time(0) and end.time() == time(0):
+        last = end.date() - timedelta(days=1)
+        return f"{start:%a %b %d}" + ("" if last == start.date() else f" - {last:%a %b %d}")
+    if end.date() == start.date() or (end.time() == time(0) and end - start <= timedelta(days=1)):
+        return f"{start:%a %b %d %H:%M}-{end:%H:%M}"
+    if end.time() == time(0):  # "until the end of Sunday"
+        return f"{start:%a %b %d %H:%M} - {end.date() - timedelta(days=1):%a %b %d}"
+    return f"{start:%a %b %d %H:%M} - {end:%a %b %d %H:%M}"
+
+
+class _Period(BaseModel):
+    start: AwareDatetime
+    end: AwareDatetime
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Self:
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
+        if self.end - self.start > timedelta(days=31):
+            raise ValueError("a period can be at most 31 days")
+        return self
 
 
 # --- create_reminder -------------------------------------------------------------------------
@@ -151,6 +193,158 @@ async def _list_reminders(_: ListRemindersArgs, deps: ToolDeps) -> str:
     return "Upcoming: " + "; ".join(f"{r.text} ({fmt_local(r.due_at, deps.tz)})" for r in upcoming)
 
 
+# --- search_email (read-only) ----------------------------------------------------------------
+
+
+class SearchEmailArgs(BaseModel):
+    query: str = Field(
+        default="",
+        max_length=300,
+        description="Gmail search, e.g. 'from:alice is:unread newer_than:7d'. Empty: the inbox.",
+    )
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+async def _search_email(args: SearchEmailArgs, deps: ToolDeps) -> str:
+    found = await deps.mail.search(args.query or "in:inbox", args.limit)
+    if not found:
+        return "No emails match." if args.query else "Your inbox is empty."
+    lines = [
+        f"{'* ' if m.unread else ''}{m.sender}: {m.subject} ({fmt_local(m.received_at, deps.tz)})"
+        + (f" - {m.snippet[:140]}" if m.snippet else "")
+        for m in found
+    ]
+    return f"{len(found)} email{'s' if len(found) != 1 else ''}:\n" + "\n".join(lines)
+
+
+# --- send_email (the card is the draft) ------------------------------------------------------
+
+Address = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, max_length=254, pattern=r"^[^@\s<>,;]+@[^@\s<>,;]+\.[^@\s<>,;]+$"
+    ),
+]
+
+
+class SendEmailArgs(BaseModel):
+    to: list[Address] = Field(min_length=1, max_length=10, description="Recipient addresses")
+    cc: list[Address] = Field(default_factory=list, max_length=10)
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=20000, json_schema_extra={"format": "multiline"})
+
+
+async def _send_email(args: SendEmailArgs, deps: ToolDeps) -> str:
+    draft = EmailDraft(to=args.to, cc=args.cc, subject=args.subject, body=args.body)
+    await deps.mail.send(draft)
+    return f"Sent to {', '.join(args.to)}."
+
+
+def _describe_email(args: SendEmailArgs, _tz: ZoneInfo) -> tuple[str, str]:
+    return f"Email to {', '.join(args.to)}", args.subject
+
+
+def _email_preview(args: SendEmailArgs) -> str:
+    head = [f"To: {', '.join(args.to)}"]
+    if args.cc:
+        head.append(f"Cc: {', '.join(args.cc)}")
+    head.append(f"Subject: {args.subject}")
+    return "\n".join(head) + "\n\n" + args.body
+
+
+# --- list_events (read-only) -----------------------------------------------------------------
+
+
+class ListEventsArgs(_Period):
+    pass
+
+
+async def _list_events(args: ListEventsArgs, deps: ToolDeps) -> str:
+    events = await deps.calendar.list_events(args.start, args.end)
+    period = fmt_span(args.start, args.end, deps.tz)
+    if not events:
+        return f"Nothing on your calendar ({period})."
+    lines = []
+    for e in events:
+        when = (
+            f"{e.start.astimezone(deps.tz):%a %b %d}, all day"
+            if is_all_day(e, deps.tz)
+            else fmt_span(e.start, e.end, deps.tz)
+        )
+        lines.append(f"{when}: {e.title}" + (f" ({e.location})" if e.location else ""))
+    return f"{len(events)} event{'s' if len(events) != 1 else ''}:\n" + "\n".join(lines)
+
+
+# --- create_event (with a conflict check) ----------------------------------------------------
+
+
+class CreateEventArgs(_Period):
+    title: str = Field(min_length=1, max_length=300)
+    location: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(
+        default=None, max_length=5000, json_schema_extra={"format": "multiline"}
+    )
+
+
+async def _create_event(args: CreateEventArgs, deps: ToolDeps) -> str:
+    event = CalendarEvent(
+        title=args.title,
+        start=args.start,
+        end=args.end,
+        location=args.location,
+        description=args.description,
+    )
+    await deps.calendar.create_event(event)
+    return f"Added to your calendar: {args.title}, {fmt_span(args.start, args.end, deps.tz)}."
+
+
+def _describe_event(args: CreateEventArgs, tz: ZoneInfo) -> tuple[str, str]:
+    summary = fmt_span(args.start, args.end, tz)
+    if args.location:
+        summary += f", {args.location}"
+    return f"Event: {args.title}", summary
+
+
+async def _event_conflicts(args: CreateEventArgs, deps: ToolDeps) -> list[str]:
+    events = await deps.calendar.list_events(args.start, args.end)
+    return [
+        f"Overlaps {e.title}, {fmt_span(e.start, e.end, deps.tz)}"
+        for e in conflicts(events, args.start, args.end, deps.tz)
+    ]
+
+
+# --- find_free_time (read-only) --------------------------------------------------------------
+
+
+class FindFreeTimeArgs(_Period):
+    duration_minutes: int = Field(default=60, ge=15, le=600, description="How long it needs")
+
+
+MAX_SLOTS = 6
+
+
+async def _find_free_time(args: FindFreeTimeArgs, deps: ToolDeps) -> str:
+    start = max(args.start, deps.clock.now())  # never offer time that's already gone
+    length = _fmt_minutes(args.duration_minutes)
+    if start >= args.end:
+        return "That time has already passed."
+    events = await deps.calendar.list_events(start, args.end)
+    slots = free_slots(events, start, args.end, args.duration_minutes, deps.tz, deps.day_hours)
+    hours = f"{deps.day_hours[0]:02d}:00-{deps.day_hours[1]:02d}:00"
+    if not slots:
+        return f"No free {length} between {hours} in {fmt_span(start, args.end, deps.tz)}."
+    shown = "\n".join(fmt_span(a, b, deps.tz) for a, b in slots[:MAX_SLOTS])
+    more = f"\n(+{len(slots) - MAX_SLOTS} more)" if len(slots) > MAX_SLOTS else ""
+    return f"Free for {length} ({hours}):\n{shown}{more}"
+
+
+def _fmt_minutes(minutes: int) -> str:
+    hours, rest = divmod(minutes, 60)
+    if not hours:
+        return f"{rest} min"
+    return f"{hours} h" + (f" {rest} min" if rest else "")
+
+
 def default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
@@ -181,6 +375,60 @@ def default_registry() -> ToolRegistry:
             read_only=True,
             describe=lambda _args, _tz: ("List reminders", ""),
             execute=_list_reminders,
+        )
+    )
+    registry.register(
+        Tool(
+            name="search_email",
+            description="Search the owner's email (read-only; mail never leaves this machine).",
+            args_model=SearchEmailArgs,
+            read_only=True,
+            describe=lambda args, _tz: ("Search email", args.query),
+            execute=_search_email,
+        )
+    )
+    registry.register(
+        Tool(
+            name="send_email",
+            description="Draft an email. It is sent only when the owner approves the card.",
+            args_model=SendEmailArgs,
+            read_only=False,
+            describe=_describe_email,
+            execute=_send_email,
+            risk=Risk.EXTERNAL,
+            preview=_email_preview,
+        )
+    )
+    registry.register(
+        Tool(
+            name="list_events",
+            description="List the owner's calendar events in a period.",
+            args_model=ListEventsArgs,
+            read_only=True,
+            describe=lambda args, tz: ("List events", fmt_span(args.start, args.end, tz)),
+            execute=_list_events,
+        )
+    )
+    registry.register(
+        Tool(
+            name="create_event",
+            description="Add an event to the owner's calendar, warning about overlaps.",
+            args_model=CreateEventArgs,
+            read_only=False,
+            describe=_describe_event,
+            execute=_create_event,
+            risk=Risk.EXTERNAL,
+            check=_event_conflicts,
+        )
+    )
+    registry.register(
+        Tool(
+            name="find_free_time",
+            description="Find free slots of a given length in the owner's calendar.",
+            args_model=FindFreeTimeArgs,
+            read_only=True,
+            describe=lambda args, tz: ("Find free time", fmt_span(args.start, args.end, tz)),
+            execute=_find_free_time,
         )
     )
     return registry

@@ -12,6 +12,12 @@ from helpmate.domain.models import ProposalStatus, ToolCall, new_id
 SAMPLE_ARGS = {
     "create_reminder": {"text": "call mom", "due_at": "2026-10-05T17:00:00-04:00"},
     "create_task": {"title": "read chapter 3", "horizon": "term"},
+    "send_email": {"to": ["jo@example.com"], "subject": "Hi", "body": "See you at 5."},
+    "create_event": {
+        "title": "lunch with Sam",
+        "start": "2026-10-06T12:30:00-04:00",
+        "end": "2026-10-06T13:30:00-04:00",
+    },
 }
 
 
@@ -19,8 +25,13 @@ def _call(name: str, **args: object) -> ToolCall:
     return ToolCall(id=new_id(), name=name, arguments=args)
 
 
-async def _data_snapshot(container) -> tuple[int, int]:
-    return len(await container.repos.reminders.find()), len(await container.repos.tasks.find())
+async def _data_snapshot(container) -> tuple[int, int, int, int]:
+    return (
+        len(await container.repos.reminders.find()),
+        len(await container.repos.tasks.find()),
+        len(container.mail.sent),
+        len(container.calendar.events),
+    )
 
 
 def test_every_write_tool_has_a_sample(container):

@@ -63,7 +63,7 @@ def test_task_horizon_is_normalised():
 
 def test_unknown_tool():
     with pytest.raises(llm_tools.ResolveError, match="plain text"):
-        resolve("send_email", to="x")
+        resolve("delete_everything", confirm=True)
 
 
 def test_model_specs_differ_but_canonical_schemas_are_untouched():

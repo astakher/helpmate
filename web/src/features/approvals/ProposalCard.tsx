@@ -51,6 +51,13 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
         {current.title}
       </h3>
       {current.summary && <p className="proposal__summary">{current.summary}</p>}
+      {pending && current.warnings && current.warnings.length > 0 && (
+        <ul className="proposal__warnings" aria-label="Before you approve">
+          {current.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
       {current.preview && (
         <pre className="proposal__preview" tabIndex={0} aria-label="Full preview">
           {current.preview}

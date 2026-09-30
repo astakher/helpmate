@@ -3,6 +3,7 @@ type JsonSchema = {
   format?: string;
   enum?: string[];
   title?: string;
+  items?: JsonSchema;
   $ref?: string;
   anyOf?: JsonSchema[];
   properties?: Record<string, JsonSchema>;
@@ -13,7 +14,7 @@ type JsonSchema = {
 export type SchemaField = {
   name: string;
   label: string;
-  kind: "text" | "datetime" | "enum" | "number" | "bool";
+  kind: "text" | "multiline" | "list" | "datetime" | "enum" | "number" | "bool";
   options?: string[];
   required: boolean;
 };
@@ -21,7 +22,9 @@ export type SchemaField = {
 /**
  * Turns a tool's JSON Schema (GET /api/tools) into form fields, so any tool Workstream A adds
  * gets an Edit form without UI changes. Handles what pydantic emits: $ref enums, Optional (anyOf
- * with null), date-time strings, numbers and booleans.
+ * with null), date-time strings, numbers and booleans, plus lists of strings (edited as a
+ * comma-separated line, e.g. email recipients) and `format: "multiline"` (a textarea, e.g. an
+ * email body).
  */
 export function schemaFields(parameters: Record<string, unknown>): SchemaField[] {
   const schema = parameters as JsonSchema;
@@ -37,6 +40,8 @@ export function schemaFields(parameters: Record<string, unknown>): SchemaField[]
     const required = schema.required?.includes(name) ?? false;
     if (s.enum) return { name, label, kind: "enum", options: s.enum, required };
     if (s.format === "date-time") return { name, label, kind: "datetime", required };
+    if (s.format === "multiline") return { name, label, kind: "multiline", required };
+    if (s.type === "array" && s.items?.type === "string") return { name, label, kind: "list", required };
     if (s.type === "integer" || s.type === "number") return { name, label, kind: "number", required };
     if (s.type === "boolean") return { name, label, kind: "bool", required };
     return { name, label, kind: "text", required };

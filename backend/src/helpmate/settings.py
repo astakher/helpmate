@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     stt: Literal["fake", "http"] = "fake"
     tts: Literal["fake", "http"] = "fake"
     auth: Literal["dev", "totp"] = "dev"
+    mail: Literal["fake", "gmail"] = "fake"
+    calendar: Literal["fake", "google"] = "fake"
 
     # --- Core ---
     timezone: str = "America/Toronto"
@@ -61,6 +63,11 @@ class Settings(BaseSettings):
     owner_password_hash: SecretStr = SecretStr("")  # argon2; set with scripts/set_password.py
     auth_state_file: Path = REPO_ROOT / "data" / "auth.json"  # TOTP secret (data/ is git-ignored)
     session_days: int = 7
+
+    # --- Gmail + Google Calendar (Workstream B stand-in) ---
+    google_token_file: Path = REPO_ROOT / "data" / "google_token.json"  # scripts/google_auth.py
+    day_start_hour: int = 9  # find_free_time only offers time between these local hours
+    day_end_hour: int = 18
 
     # --- Postgres / S3 (Workstream B) ---
     database_url: str | None = None

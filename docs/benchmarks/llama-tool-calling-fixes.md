@@ -61,3 +61,43 @@ Reports: `desktop-o05c1es-{seed,holdout}-{baseline,improved,routed}.md` (+ `.jso
   matches; only unmatched messages pay for classification.
 - Improve the router on "list" phrasings ("anything coming up?", "what's scheduled?") and grow the
   golden set to ≥ 60, including more small talk that mentions reminders or tasks.
+
+## Update Sep 30: nine routes (Gmail + Google Calendar)
+
+The router now picks from nine actions: `reply`, the three reminder/task tools, and `search_email`,
+`send_email`, `list_events`, `create_event`, `find_free_time`. Two further changes shipped with them:
+
+- **One tool's rules per routed call** (`llm_tools.tool_prompt()`): once the router has chosen, the
+  model sees only that tool's rules and examples, not all nine. `system_prompt()` is still used by
+  the `improved` pipeline.
+- **The same "words in, code does the work" idea for the new tools**: calendar tools take the owner's
+  time words ("Friday 2 to 4pm", "this week") and `when.py` turns them into exact times.
+  `search_email` takes sender / about / unread_only / days, and code builds the Gmail query.
+  `send_email` only accepts addresses the owner typed; otherwise the agent asks who it's for
+  (`NeedsOwner`, not retried).
+
+New case set `golden_connectors.jsonl` (18 prompts: email, calendar, and look-alikes that must *not*
+use them, e.g. "remind me about the dentist…", "add 'email the landlord' to my to-do list"). It was
+written before the first run.
+
+| Run | Seed (15) | Held-out (16) | Connectors (18) | Args valid / correct |
+|---|---|---|---|---|
+| Sep 29, four routes | 100% | 94% | – | 100% / 100% |
+| Sep 30, nine routes (first run) | 93% | **100%** | **94%** | 100% / 100% |
+| Sep 30, nine routes + "only talks about email or calendar → reply" | 93% | **100%** | **94%** | 100% / 100% |
+
+All runs: llama3.2:3b, 100% GPU, 2.55 GB VRAM, no retries needed. Seed + held-out together stayed at
+30/31. The misses are both "talks about it without asking":
+
+- `chat-explain` "Explain the PARA method for organizing notes" → `create_task`. That makes a card
+  the owner has to approve, so nothing is written.
+- `chat-mail-talk` "I get way too many emails these days" → `send_email` in the first run. The
+  address guard stopped it and the agent asked who to send to. After the rule tweak it went to
+  `search_email` (read-only) instead, which is why the tweak was kept even though the score didn't
+  move. The connectors set informed that tweak, so it is **no longer held out**.
+
+Reports: `desktop-o05c1es-{seed,holdout,connectors}-routed-9routes[-v2].md`.
+
+Live on the XPS through chat (real Google account, read-only): "what's on my calendar this week?",
+"any unread emails?" and "when am I free for an hour tomorrow?" each chose the right tool, and each
+answered in ~2 s once the model was warm.

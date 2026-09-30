@@ -7,9 +7,15 @@ HelpMate process (API, speech service, Ollama server + model runner) while it dr
 workload through the API, and classifies every remote address it sees:
 
   loopback              expected (API <-> Ollama, API <-> speech)
-  push service          expected, for push only (FCM, Apple, Mozilla, Windows)
+  push / Google API     expected: push (FCM, Apple, Mozilla, Windows) and, with
+                        HELPMATE_MAIL=gmail / HELPMATE_CALENDAR=google, the mail and calendar
+                        tools. Reverse DNS can't tell FCM from Gmail (both are *.1e100.net), so
+                        they share a row; the API process is the only one that may reach them.
   Tailscale 100.64/10   expected: your own devices reaching the app over `tailscale serve`
   anything else         UNEXPECTED -> the check fails
+
+With Google connected, the workload also asks "what's on my calendar today?" (read-only), so the
+report shows that the calendar is read by the API alone and the model never talks to Google.
 
 Run with the stack up (./scripts/dev.ps1 -Prod, HELPMATE_AUTH=dev), from backend/:
 
@@ -89,7 +95,7 @@ def classify(ip: str, host: str | None) -> str:
     if address.version == 4 and address in TAILSCALE:
         return "Tailscale (own devices)"
     if host and host.rstrip(".").endswith(PUSH_SUFFIXES):
-        return "push service"
+        return "push / Google API"
     return "UNEXPECTED"
 
 
@@ -103,15 +109,28 @@ def reverse_dns(ip: str) -> str | None:
 def workload(client: httpx.Client) -> list[str]:
     steps: list[str] = []
     health = client.get(f"{API}/health").json()["adapters"]
-    steps.append(f"health: llm={health['llm']['name']}, stt={health['stt']['name']}")
+    names = {seam: health[seam]["name"] for seam in ("llm", "stt", "mail", "calendar")}
+    steps.append("health: " + ", ".join(f"{seam}={name}" for seam, name in names.items()))
     session = client.post(f"{API}/chat/sessions", json={}).json()["id"]
-    prompts = ("What's the capital of Canada? One sentence.", "remind me to stretch in 5 minutes")
+    prompts: tuple[str, ...] = (
+        "What's the capital of Canada? One sentence.",
+        "remind me to stretch in 5 minutes",
+    )
+    if names["calendar"] == "google":
+        prompts += ("What's on my calendar today?",)
     for text in prompts:
         with client.stream(
             "POST", f"{API}/chat/sessions/{session}/messages", json={"text": text}
         ) as r:
             body = "".join(r.iter_text())
-        steps.append(f"chat {text!r}: {'proposal' if 'proposal.created' in body else 'reply'}")
+        outcome = (
+            "proposal"
+            if "proposal.created" in body
+            else "tool result"
+            if "tool.result" in body
+            else "reply"
+        )
+        steps.append(f"chat {text!r}: {outcome}")
     wav = client.post(f"{API}/voice/speak", json={"text": "Remind me to call mom."}).content
     heard = client.post(
         f"{API}/voice/transcribe", content=wav, headers={"Content-Type": "audio/wav"}
@@ -145,14 +164,16 @@ def main() -> None:
     for (proc, ip, port), hits in sorted(watcher.seen.items()):
         host = None if ipaddress.ip_address(ip).is_loopback else reverse_dns(ip)
         kind = classify(ip, host)
+        if kind == "push / Google API" and proc != "HelpMate API":
+            kind = "UNEXPECTED (only the API may reach Google or push services)"
         inference = "not inference" not in proc
-        if kind == "UNEXPECTED" and inference:
+        if kind.startswith("UNEXPECTED") and inference:
             unexpected += 1
         rows.append((proc, f"{ip}:{port}", host or "", kind, hits))
 
     verdict = (
         "PASS: during the workload, HelpMate's processes talked only to this machine, your own "
-        "Tailscale devices and push services."
+        "Tailscale devices and (the API alone) push services / Google's mail and calendar APIs."
         if not unexpected
         else f"FAIL: {unexpected} unexpected remote endpoint(s), see the table."
     )
@@ -175,7 +196,10 @@ def main() -> None:
         *[f"| {p} | {r} | {h} | {k} | {n} |" for p, r, h, k, n in rows],
         "",
         "Loopback = API <-> Ollama / speech service. Push services receive only the encrypted "
-        "notification payload (title/body, or generic text with private previews on).",
+        "notification payload (title/body, or generic text with private previews on). Google's "
+        "mail and calendar APIs are read by the API; what they return stays on this machine "
+        "(shown to the owner, and seen only by the local model in chat history), and nothing is "
+        "sent or created there without an approved card.",
         "Sampling can miss sub-50 ms connections; for a formal run also capture with Wireshark or "
         "pktmon during the same workload.",
         "",

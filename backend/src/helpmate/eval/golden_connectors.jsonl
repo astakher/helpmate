@@ -1,0 +1,18 @@
+{"id": "mail-new", "prompt": "Do I have any new emails?", "tool": "search_email", "checks": {"query~": "is:unread"}}
+{"id": "mail-from", "prompt": "Did the landlord email me this week?", "tool": "search_email", "checks": {"query~": "landlord"}}
+{"id": "mail-about", "prompt": "Find the email about my flight booking", "tool": "search_email", "checks": {"query~": "flight"}}
+{"id": "mail-send", "prompt": "Email prof.chen@mcmaster.ca to ask if office hours are still on Thursday", "tool": "send_email", "checks": {"to~": "prof.chen@mcmaster.ca", "body~": "office hours"}}
+{"id": "mail-reply", "prompt": "Write to sam.lee@example.com and say thanks for the notes", "tool": "send_email", "checks": {"to~": "sam.lee@example.com", "body~": "notes"}}
+{"id": "mail-noaddr", "prompt": "Send an email to my sister saying happy birthday", "tool": "send_email", "checks": {"asks_owner": true}}
+{"id": "cal-today", "prompt": "What's on my calendar today?", "tool": "list_events", "checks": {"start_local": "+0 00:00", "end_local": "+1 00:00"}}
+{"id": "cal-friday", "prompt": "Do I have any meetings on Friday?", "tool": "list_events", "checks": {"start_next_local": "FR 00:00"}}
+{"id": "cal-nextweek", "prompt": "What does my schedule look like next week?", "tool": "list_events", "checks": {"start_next_local": "MO 00:00"}}
+{"id": "cal-add", "prompt": "Add a dentist appointment to my calendar tomorrow at 3pm", "tool": "create_event", "checks": {"title~": "dentist", "start_local": "+1 15:00", "end_local": "+1 16:00"}}
+{"id": "cal-range", "prompt": "Schedule a study group on Thursday from 6 to 8pm", "tool": "create_event", "checks": {"title~": "study", "start_next_local": "TH 18:00", "end_next_local": "TH 20:00"}}
+{"id": "cal-duration", "prompt": "Book a 30 minute call with the TA tomorrow at 10am", "tool": "create_event", "checks": {"title~": "TA", "start_local": "+1 10:00", "end_local": "+1 10:30"}}
+{"id": "free-week", "prompt": "When am I free for two hours this week?", "tool": "find_free_time", "checks": {"duration_minutes": 120}}
+{"id": "free-tomorrow", "prompt": "Find me an hour tomorrow to work on the essay", "tool": "find_free_time", "checks": {"duration_minutes": 60, "start_local": "+1 00:00"}}
+{"id": "rem-not-event", "prompt": "Remind me about the dentist tomorrow at 2pm", "tool": "create_reminder", "checks": {"text~": "dentist", "due_local": "+1 14:00"}}
+{"id": "task-not-mail", "prompt": "Add 'email the landlord' to my to-do list", "tool": "create_task", "checks": {"title~": "landlord"}}
+{"id": "chat-mail-talk", "prompt": "I get way too many emails these days", "tool": null, "checks": {}}
+{"id": "chat-cal-advice", "prompt": "What's a good way to organise my calendar?", "tool": null, "checks": {}}

@@ -109,6 +109,17 @@ To use real components, edit `.env`, one seam at a time:
 | Postgres | `HELPMATE_REPO=postgres` | Docker Desktop (WSL2; `wsl --install --no-distribution` first, then reboot). Put a random `POSTGRES_PASSWORD` in `.env` (and the same one in `HELPMATE_DATABASE_URL`) **before** the first start, then `docker compose --env-file .env -f infra/docker-compose.yml up -d postgres`. The API runs the Alembic migrations and seeds an empty database at start-up. Contract suite against a throwaway DB: `docker exec helpmate-postgres-1 createdb -U helpmate helpmate_test`, then set `HELPMATE_TEST_DATABASE_URL=...helpmate_test` and run `uv run pytest tests/contracts`. |
 | Real login + 2FA | `HELPMATE_AUTH=totp` | in **your own terminal**, from `backend/`: `uv run python ../scripts/set_password.py` (writes an argon2 hash to `.env`, never the password). Restart the API and sign in, then Settings → Two-step verification → scan → enter the first code → **Turn on**. Lost phone: `set_password.py --reset-2fa`. 5 wrong passwords lock sign-in for 15 min. |
 | Web Push | `HELPMATE_NOTIFIER=webpush` + VAPID keys | `cd backend; uv run python ../scripts/gen_vapid.py --write` (once; share the same keys across hosts). Then `./scripts/dev.ps1 -Prod`, open `http://127.0.0.1:8000/settings` → **Enable notifications** → **Send a test notification**. Not on :5173: the dev server has no service worker. |
+| Gmail + Calendar | `HELPMATE_MAIL=gmail`, `HELPMATE_CALENDAR=google` | Google sign-in with the narrowest scopes (`gmail.readonly`, `gmail.send`, `calendar.events`); see §4a. Without it both stay on in-memory fakes. |
+
+### 4a. Connecting Google (once, ~10 min)
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → new project (e.g. `helpmate`) → **APIs & Services → Library**: enable **Gmail API** and **Google Calendar API**.
+2. **OAuth consent screen**: User type **External**, leave it in **Testing**, and add your Google account under **Test users**. No verification is needed for your own account.
+3. **Credentials → Create credentials → OAuth client ID → Desktop app**. Download the JSON to `data/google_client_secret.json` (`data/` is git-ignored; never paste its contents anywhere).
+4. From `backend/`: `uv run python ../scripts/google_auth.py`. The browser opens Google's consent page: pick your account, click through "Google hasn't verified this app" (it's your own project), **tick all three permissions**, and allow. The sign-in (a refresh token, never your password) is saved to `data/google_token.json`, also git-ignored.
+5. Set `HELPMATE_MAIL=gmail` and `HELPMATE_CALENDAR=google` in `.env` and restart the API. System status shows `mail=gmail`, `calendar=google`. Try "what's on my calendar this week?" or "any unread emails?".
+
+Apps in **Testing** get **7-day** sign-ins: when Google expires it, chat answers "Google's sign-in expired…" and you re-run step 4. Revoke any time at <https://myaccount.google.com/permissions> (then delete `data/google_token.json`). Mail and events are read by the API only. Nothing is sent or created until you approve its card, and email cards show the whole message first.
 
 ## 5. Phone access with Tailscale (week 4)
 

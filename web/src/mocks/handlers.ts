@@ -122,6 +122,38 @@ export const TOOLS: ToolInfo[] = [
     },
   },
   { name: "list_reminders", description: "List reminders.", read_only: true, risk: "write", parameters: { type: "object", properties: {} } },
+  {
+    name: "send_email",
+    description: "Draft an email. It is sent only when the owner approves the card.",
+    read_only: false,
+    risk: "external",
+    parameters: {
+      type: "object",
+      required: ["to", "subject", "body"],
+      properties: {
+        to: { type: "array", items: { type: "string" }, title: "To" },
+        cc: { type: "array", items: { type: "string" }, title: "Cc" },
+        subject: { type: "string", title: "Subject" },
+        body: { type: "string", format: "multiline", title: "Body" },
+      },
+    },
+  },
+  {
+    name: "create_event",
+    description: "Add an event to the owner's calendar, warning about overlaps.",
+    read_only: false,
+    risk: "external",
+    parameters: {
+      type: "object",
+      required: ["start", "end", "title"],
+      properties: {
+        start: { type: "string", format: "date-time", title: "Start" },
+        end: { type: "string", format: "date-time", title: "End" },
+        title: { type: "string", title: "Title" },
+        location: { anyOf: [{ type: "string" }, { type: "null" }], title: "Location" },
+      },
+    },
+  },
 ];
 
 export function sseFrames(events: ChatEvent[], gapMs = 15): HttpResponse<ReadableStream> {
@@ -143,7 +175,14 @@ const words = (text: string): ChatEvent[] =>
 
 const done = (): ChatEvent => ({ type: "message.done", message_id: newId(), ttft_ms: 42, tokens: 10 });
 
-function propose(sessionId: string, tool: string, title: string, summary: string, args: Record<string, unknown>): ChatEvent[] {
+function propose(
+  sessionId: string,
+  tool: string,
+  title: string,
+  summary: string,
+  args: Record<string, unknown>,
+  extra: Partial<Proposal> = {},
+): ChatEvent[] {
   const proposal: Proposal = {
     id: newId(),
     session_id: sessionId,
@@ -152,11 +191,13 @@ function propose(sessionId: string, tool: string, title: string, summary: string
     summary,
     args,
     preview: null,
+    warnings: [],
     risk: "write",
     status: "pending",
     created_at: nowIso(),
     decided_at: null,
     result: null,
+    ...extra,
   };
   db.proposals.unshift(proposal);
   return [
@@ -187,6 +228,33 @@ function reply(text: string, sessionId: string): ChatEvent[] {
     ];
     return propose(sessionId, "create_task", `Task: ${task[1]}`, task[2] ?? "this week", { title: task[1], horizon, due_at: null });
   }
+  const email = /^email (\S+@\S+\.\w+) (?:to say |saying |that )?(.+)$/i.exec(phrase);
+  if (email) {
+    const [, to, what] = email;
+    const body = `Hi,\n\n${what[0].toUpperCase()}${what.slice(1)}.\n\nThanks!`;
+    return propose(sessionId, "send_email", `Email to ${to}`, "Quick note", { to: [to], cc: [], subject: "Quick note", body }, {
+      risk: "external",
+      preview: `To: ${to}\nSubject: Quick note\n\n${body}`,
+    });
+  }
+  const event = /^add (.+?) to my calendar tomorrow at (\d{1,2}) ?(am|pm)$/i.exec(phrase);
+  if (event) {
+    const [, title, hour, ampm] = event;
+    const start = new Date();
+    start.setDate(start.getDate() + 1);
+    start.setHours((Number(hour) % 12) + (ampm.toLowerCase() === "pm" ? 12 : 0), 0, 0, 0);
+    const end = new Date(start.getTime() + 3600_000);
+    const clock = (d: Date) => d.toTimeString().slice(0, 5);
+    return propose(
+      sessionId,
+      "create_event",
+      `Event: ${title}`,
+      `tomorrow ${clock(start)}-${clock(end)}`,
+      { title, start: start.toISOString(), end: end.toISOString(), location: null },
+      // the mock calendar has a standup every morning at 10, to show the conflict warning
+      { risk: "external", warnings: start.getHours() === 10 ? ["Overlaps Standup, 10:00-10:30"] : [] },
+    );
+  }
   const remember = /^remember(?: that)? (.{3,})$/i.exec(phrase);
   if (remember) {
     db.suggestions.unshift({ id: newId(), text: remember[1], source: `chat:${sessionId}`, status: "pending", created_at: nowIso() });
@@ -196,10 +264,18 @@ function reply(text: string, sessionId: string): ChatEvent[] {
       done(),
     ];
   }
-  return [...words(`(mock) You said: "${text}". Try: remind me to stretch in 1 minute.`), done()];
+  return [
+    ...words(
+      `(mock) You said: "${text}". Try: remind me to stretch in 1 minute, email jo@example.com to say ` +
+        "I'm running late, or add dentist to my calendar tomorrow at 10am.",
+    ),
+    done(),
+  ];
 }
 
 function execute(proposal: Proposal, args: Record<string, unknown>) {
+  if (proposal.tool === "send_email") return `Sent to ${(args.to as string[]).join(", ")} (mock).`;
+  if (proposal.tool === "create_event") return "Added to your calendar (mock).";
   if (proposal.tool === "create_reminder") {
     db.reminders.push({
       id: newId(),
@@ -231,7 +307,7 @@ export const handlers = [
       status: "ok",
       version: "mock",
       adapters: Object.fromEntries(
-        ["agent", "llm", "embeddings", "repo", "scheduler", "auth", "notifier", "stt", "tts"].map((seam) => [
+        ["agent", "llm", "embeddings", "repo", "scheduler", "auth", "mail", "calendar", "notifier", "stt", "tts"].map((seam) => [
           seam,
           { name: seam === "auth" && db.auth.real ? "totp" : "msw", fake: !(seam === "auth" && db.auth.real) },
         ]),
@@ -311,7 +387,10 @@ export const handlers = [
       } else {
         if (decision === "edit") {
           proposal.args = args!;
-          proposal.title = `${proposal.tool === "create_task" ? "Task" : "Reminder"}: ${args!.title ?? args!.text}`;
+          proposal.title =
+            proposal.tool === "send_email"
+              ? `Email to ${(args!.to as string[]).join(", ")}`
+              : `${{ create_task: "Task", create_event: "Event" }[proposal.tool] ?? "Reminder"}: ${args!.title ?? args!.text}`;
         }
         proposal.result = execute(proposal, proposal.args);
         proposal.status = "executed";

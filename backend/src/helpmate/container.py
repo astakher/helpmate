@@ -13,6 +13,7 @@ from typing import NoReturn
 import httpx
 
 from helpmate.adapters.clock import SystemClock
+from helpmate.adapters.fakes.connectors import FakeCalendar, FakeMail
 from helpmate.adapters.fakes.dev_auth import DevAuth
 from helpmate.adapters.fakes.dev_scheduler import DevScheduler
 from helpmate.adapters.fakes.fake_llm import FakeEmbeddings, FakeLLM
@@ -29,9 +30,11 @@ from helpmate.domain.ports import (
     Adapter,
     AgentPort,
     AuthPort,
+    CalendarPort,
     Clock,
     EmbeddingPort,
     LLMPort,
+    MailPort,
     NotifierPort,
     Repositories,
     SchedulerPort,
@@ -46,6 +49,8 @@ _OWNER = {
     "repo": "B",
     "scheduler": "B",
     "auth": "B",
+    "mail": "B",
+    "calendar": "B",
     "notifier": "C",
     "stt": "C",
     "tts": "C",
@@ -75,6 +80,8 @@ class Container:
     tts: TTSPort
     notifier: NotifierPort
     scheduler: SchedulerPort
+    mail: MailPort
+    calendar: CalendarPort
     tools: ToolRegistry
     policy: PolicyEngine
     agent: AgentPort
@@ -88,6 +95,8 @@ class Container:
             "repo": self.repos,
             "scheduler": self.scheduler,
             "auth": self.auth,
+            "mail": self.mail,
+            "calendar": self.calendar,
             "notifier": self.notifier,
             "stt": self.stt,
             "tts": self.tts,
@@ -196,9 +205,36 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         if settings.tts == "http":
             tts = HttpTTS(speech)
 
+    # --- Mail + calendar (B) ---
+    mail: MailPort = FakeMail()
+    calendar: CalendarPort = FakeCalendar()
+    if settings.mail == "gmail" or settings.calendar == "google":
+        # Stand-in for Workstream B - not part of the Part C deliverable
+        from helpmate.adapters.gcal import GoogleCalendar
+        from helpmate.adapters.gmail import GmailMail
+        from helpmate.adapters.google_oauth import GoogleApi, GoogleCredentials
+
+        google = GoogleApi(
+            http_client("", httpx.Timeout(30.0, connect=5.0)),
+            GoogleCredentials(settings.google_token_file),
+        )
+        if settings.mail == "gmail":
+            mail = GmailMail(google)
+        if settings.calendar == "google":
+            calendar = GoogleCalendar(google, settings.tz)
+
     # --- Tools, policy engine, agent (A) ---
     tools = default_registry()
-    policy = PolicyEngine(tools, ToolDeps(repos, scheduler, clock, settings.tz))
+    deps = ToolDeps(
+        repos,
+        scheduler,
+        clock,
+        settings.tz,
+        mail,
+        calendar,
+        (settings.day_start_hour, settings.day_end_hour),
+    )
+    policy = PolicyEngine(tools, deps)
     agent: AgentPort
     if settings.agent == "scripted":
         agent = ScriptedAgent(
@@ -221,6 +257,8 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         tts=tts,
         notifier=notifier,
         scheduler=scheduler,
+        mail=mail,
+        calendar=calendar,
         tools=tools,
         policy=policy,
         agent=agent,

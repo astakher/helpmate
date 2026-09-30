@@ -58,6 +58,7 @@ FORBIDDEN_IN_TESTS = (
     "helpmate.adapters.postgres_",
     "helpmate.adapters.gmail",
     "helpmate.adapters.gcal",
+    "helpmate.adapters.google_",
     "helpmate.adapters.s3_",
 )
 

@@ -12,9 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from helpmate.agent.tools import ToolDeps, ToolRegistry
+from helpmate.agent.tools import Tool, ToolDeps, ToolRegistry
 from helpmate.domain.models import (
     Actor,
     AuditEntry,
@@ -67,7 +67,11 @@ class PolicyEngine:
             return ToolOutcome(ok=False, summary=f"Invalid arguments for {call.name}: {exc}")
 
         if tool.read_only:
-            result = await tool.execute(args, self._deps)
+            try:
+                result = await tool.execute(args, self._deps)
+            except Exception as exc:  # e.g. Google not connected: the chat says so
+                await self._audit(Actor.AGENT, "tool.failed", call.name, error=str(exc))
+                return ToolOutcome(ok=False, summary=f"Couldn't run {call.name}: {exc}")
             await self._audit(Actor.AGENT, "tool.executed", call.name, read_only=True)
             return ToolOutcome(ok=True, summary=result)
 
@@ -80,6 +84,7 @@ class PolicyEngine:
             summary=summary,
             args=args.model_dump(mode="json"),
             preview=tool.preview(args) if tool.preview else None,
+            warnings=await self._warnings(tool, args),
             risk=tool.risk,
             created_at=self._deps.clock.now(),
         )
@@ -117,6 +122,8 @@ class PolicyEngine:
         if decision == "edit":
             proposal.args = parsed.model_dump(mode="json")
             proposal.title, proposal.summary = tool.describe(parsed, self._deps.tz)
+            proposal.preview = tool.preview(parsed) if tool.preview else None
+            proposal.warnings = await self._warnings(tool, parsed)
 
         action = "proposal.edited" if decision == "edit" else "proposal.approved"
         await self._audit(Actor.USER, action, proposal.id, tool=proposal.tool)
@@ -132,6 +139,16 @@ class PolicyEngine:
             )
         await self._deps.repos.proposals.update(proposal)
         return proposal
+
+    async def _warnings(self, tool: Tool[Any], args: BaseModel) -> list[str]:
+        """The tool's pre-approval check (e.g. calendar overlaps). A failing check never blocks
+        the card: the owner sees that it couldn't run instead."""
+        if tool.check is None:
+            return []
+        try:
+            return await tool.check(args, self._deps)
+        except Exception as exc:
+            return [f"Couldn't check this first: {exc}"]
 
     async def _audit(self, actor: Actor, action: str, target: str | None, **detail: Any) -> None:
         await self._deps.repos.audit.add(

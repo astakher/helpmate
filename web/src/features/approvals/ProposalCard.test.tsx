@@ -49,4 +49,21 @@ describe("ProposalCard", () => {
     expect(screen.getByLabelText("Full preview")).toHaveTextContent("Hi Prof,");
     expect(await axeViolations(container)).toEqual([]);
   });
+
+  it("shows conflict warnings while the card is pending, and not once it's decided", async () => {
+    const event = proposal({
+      tool: "create_event",
+      title: "Event: dentist",
+      risk: "external",
+      warnings: ["Overlaps Standup, Tue Oct 06 10:00-11:00"],
+    });
+    db.proposals.push({ ...event });
+    const { container } = renderWithProviders(<ProposalCard proposal={event} />);
+    expect(screen.getByRole("list", { name: "Before you approve" })).toHaveTextContent("Overlaps Standup");
+    expect(await axeViolations(container)).toEqual([]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Done");
+    expect(screen.queryByRole("list", { name: "Before you approve" })).not.toBeInTheDocument();
+  });
 });

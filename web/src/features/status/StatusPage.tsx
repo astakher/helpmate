@@ -8,6 +8,8 @@ const SEAMS: Record<string, { label: string; owner: string }> = {
   repo: { label: "Database", owner: "B" },
   scheduler: { label: "Scheduler", owner: "B" },
   auth: { label: "Login", owner: "B" },
+  mail: { label: "Email", owner: "B" },
+  calendar: { label: "Calendar", owner: "B" },
   notifier: { label: "Notifications", owner: "C" },
   stt: { label: "Speech-to-text", owner: "C" },
   tts: { label: "Text-to-speech", owner: "C" },

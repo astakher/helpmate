@@ -15,11 +15,16 @@ Pipelines:
   time words are resolved to due_at in code; invalid calls are sent back once (validate-and-retry).
   "Args valid" then means the resolved args pass the canonical models.
 - routed: improved, plus a first classification call with no tools attached (structured output);
-  then a plain reply with no tools, or a call offering only the chosen tool.
+  then a plain reply with no tools, or a call offering only the chosen tool with only that tool's
+  rules (llm_tools.tool_prompt), as the LoopAgent does.
 - baseline: the Sep 29 setup. Canonical specs, the model must write ISO datetimes, no retry.
 
-Case sets: golden_seed.jsonl (15, also used while designing the improved prompt) and
-golden_holdout.jsonl (16, written before any improved run and never used for tuning).
+Case sets: golden_seed.jsonl (15, also used while designing the improved prompt),
+golden_holdout.jsonl (16, written before any improved run and never used for tuning) and
+golden_connectors.jsonl (18: email + calendar, and look-alikes that must NOT use them).
+Checks: `field~` contains; `due|start|end_local` "+N HH:MM" (N days from today);
+`due|start|end_next_local` "[MO ]HH:MM" (the next such local time); `asks_owner` (the call is
+right to stop and ask, e.g. no email address given); anything else must be equal.
 
 Needs Ollama running locally (OLLAMA_HOST=127.0.0.1:11434). Temperature is 0 so runs are
 comparable.
@@ -52,7 +57,12 @@ from helpmate.agent.when import WEEKDAYS
 from helpmate.settings import REPO_ROOT, Settings
 
 DEFAULT_MODELS = ["llama3.2:3b", "qwen3:4b"]
-CASE_FILES = {"seed": "golden_seed.jsonl", "holdout": "golden_holdout.jsonl"}
+CASE_FILES = {
+    "seed": "golden_seed.jsonl",
+    "holdout": "golden_holdout.jsonl",
+    "connectors": "golden_connectors.jsonl",
+}
+_TIME_FIELDS = {"due": "due_at", "start": "start", "end": "end"}
 Pipeline = Literal["baseline", "improved", "routed"]
 PIPELINE_NOTES = {
     "baseline": "model writes ISO datetimes itself, no retry",
@@ -195,13 +205,15 @@ class Bench:
         if self.pipeline == "routed":
             route = await self._route(model, case.prompt)
             specs = [s for s in specs if s.name == route]  # "reply" -> no tools at all
+            if route != "reply":  # the LoopAgent gives a routed call only that tool's rules
+                messages[0]["content"] = llm_tools.tool_prompt(route, now, self._tz)
         first, calls, final = await self._chat(model, messages, specs)
         resolved: dict[str, Any] | None = None
-        error: str | None = None
+        error: llm_tools.ResolveError | None = None
         retried = False
         if improved and calls:
-            resolved, error = self._resolve(calls[0], now)
-            if error:  # validate-and-retry: send the problem back to the model once
+            resolved, error = self._resolve(calls[0], now, case.prompt)
+            if error and not isinstance(error, llm_tools.NeedsOwner):  # validate-and-retry once
                 retried = True
                 messages += [
                     {"role": "assistant", "content": "", "tool_calls": calls[:1]},
@@ -213,7 +225,9 @@ class Bench:
                     },
                 ]
                 _, calls, final = await self._chat(model, messages, specs)
-                resolved, error = self._resolve(calls[0], now) if calls else (None, None)
+                resolved, error = (
+                    self._resolve(calls[0], now, case.prompt) if calls else (None, None)
+                )
         total_ms = (time.perf_counter() - started) * 1000
         result = self._score(
             case, calls, now, first, started, total_ms, final, resolved, error, retried
@@ -278,15 +292,15 @@ class Bench:
         return _first_visible(content, chunks, tool_at), calls, final
 
     def _resolve(
-        self, call: dict[str, Any], now: datetime
-    ) -> tuple[dict[str, Any] | None, str | None]:
+        self, call: dict[str, Any], now: datetime, said: str
+    ) -> tuple[dict[str, Any] | None, llm_tools.ResolveError | None]:
         function = call.get("function") or {}
         try:
             args = llm_tools.resolve(
-                function.get("name", ""), _arguments(call), self._tools, now, self._tz
+                function.get("name", ""), _arguments(call), self._tools, now, self._tz, said=said
             )
         except llm_tools.ResolveError as exc:
-            return None, str(exc)
+            return None, exc
         return args, None
 
     def _score(
@@ -299,7 +313,7 @@ class Bench:
         total_ms: float,
         final: dict[str, Any],
         resolved: dict[str, Any] | None = None,
-        error: str | None = None,
+        error: llm_tools.ResolveError | None = None,
         retried: bool = False,
     ) -> CaseResult:
         called = calls[0]["function"]["name"] if calls else None
@@ -319,6 +333,11 @@ class Bench:
             retried=retried,
         )
         if case.tool is None or not result.tool_ok:
+            return result
+        if case.checks.get("asks_owner"):  # right to stop and ask the owner
+            result.args_strict_ok = result.checks_ok = isinstance(error, llm_tools.NeedsOwner)
+            if not result.checks_ok:
+                result.notes.append(f"expected to ask the owner, got {resolved or error}")
             return result
         if self.pipeline in ("improved", "routed"):
             result.args_strict_ok = resolved is not None
@@ -355,25 +374,27 @@ def check_args(
             target = now + timedelta(minutes=expected)
             if due is None or abs((due - target).total_seconds()) > 120:
                 notes.append(f"due_at={args.get('due_at')!r}, expected ~{target:%H:%M}")
-        elif key == "due_local":
+        elif key.endswith("_next_local"):  # "[MO ]HH:MM": the next such local time after now
+            name = _TIME_FIELDS[key.removesuffix("_next_local")]
+            *day, hhmm = expected.split(" ")
+            hour, minute = map(int, hhmm.split(":"))
+            target = _next_local(now, tz, hour, minute, day[0] if day else None)
+            due = _parse_dt(args.get(name), tz)
+            if due is None or due.astimezone(tz).replace(second=0, microsecond=0) != target:
+                notes.append(f"{name}={args.get(name)!r}, expected {target:%a %Y-%m-%d %H:%M}")
+        elif key.endswith("_local"):  # "+N HH:MM": N days from today at HH:MM
+            name = _TIME_FIELDS[key.removesuffix("_local")]
             day_offset, hhmm = expected.split(" ")
             hour, minute = map(int, hhmm.split(":"))
             target_date = now.astimezone(tz).date() + timedelta(days=int(day_offset))
-            due = _parse_dt(args.get("due_at"), tz)
+            due = _parse_dt(args.get(name), tz)
             local = due.astimezone(tz) if due else None
             if local is None or (local.date(), local.hour, local.minute) != (
                 target_date,
                 hour,
                 minute,
             ):
-                notes.append(f"due_at={args.get('due_at')!r}, expected {target_date} {hhmm}")
-        elif key == "due_next_local":  # "[MO ]HH:MM": the next such local time after now
-            *day, hhmm = expected.split(" ")
-            hour, minute = map(int, hhmm.split(":"))
-            target = _next_local(now, tz, hour, minute, day[0] if day else None)
-            due = _parse_dt(args.get("due_at"), tz)
-            if due is None or due.astimezone(tz).replace(second=0, microsecond=0) != target:
-                notes.append(f"due_at={args.get('due_at')!r}, expected {target:%a %Y-%m-%d %H:%M}")
+                notes.append(f"{name}={args.get(name)!r}, expected {target_date} {hhmm}")
         elif args.get(key) != expected:
             notes.append(f"{key}={args.get(key)!r}, expected {expected!r}")
     return not notes, notes
