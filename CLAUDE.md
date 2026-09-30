@@ -80,6 +80,10 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - **Default model: llama3.2:3b** — the only one meeting the speed and 100%-GPU targets, and the
   Updated spec asks for Llama-family. Misses to fix in A's agent: relative times ("in 10 minutes"
   → `PT10M`), empty `recurrence`, and tool calls on small talk. See the report's Misses list.
+- **Tool-calling fixes prototyped for A** (stand-in, `agent/llm_tools.py` + `agent/when.py`,
+  `docs/benchmarks/llama-tool-calling-fixes.md`): time words resolved in code + a no-tools routing
+  call → llama3.2:3b **tool choice 100% / 94%, args 100%** on seed / held-out (31 prompts), plain
+  reply first word 0.46 s, tool call ~1.5–1.9 s. A prompt rule alone did nothing for small talk.
 - Next: Phase 5 real voice → Phase 6 Web Push → Phase 7 Tailscale. Midterm video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
@@ -95,8 +99,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - [C] Energy per request: `nvidia-smi` power is N/A on the 1050 Ti Max-Q; plan a wall-meter/HWiNFO or
   demo-host measurement.
 - [C] Phase 8: Playwright E2E (chat → approve → reminder → push ack) + DST test across Nov 1.
-- [A] (stand-in) llama3.2:3b misses: compute `due_at` in code from an offset, `recurrence` enum, plain
-  reply for small talk. Fix benchmark `rem-at` and thinking-model TTFT; try `qwen3:4b-instruct`.
+- [A] Adopt the prototyped `llm_tools` routing + `when.py` in the real agent loop; skip the router
+  when `intent_parser` matches (saves ~0.4 s); grow the golden set to ≥ 60; try `qwen3:4b-instruct`.
+  (Done as stand-ins: benchmark `rem-at` fix, thinking-model TTFT, held-out set, `--pipeline`.)
 - [A] (stand-in) "permitted" permission tier (empty by default); calendar conflict/free-time tools;
   golden set ≥ 60, recall@5, 10 prompt-injection cases.
 - [B] (stand-in) `SettingsRepo` case in `tests/contracts/test_repositories.py`; read-only

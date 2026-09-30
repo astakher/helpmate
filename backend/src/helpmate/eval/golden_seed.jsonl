@@ -1,4 +1,4 @@
-{"id": "rem-at", "prompt": "Remind me to call mom at 5pm", "tool": "create_reminder", "checks": {"text~": "mom", "due_local": "+0 17:00"}}
+{"id": "rem-at", "prompt": "Remind me to call mom at 5pm", "tool": "create_reminder", "checks": {"text~": "mom", "due_next_local": "17:00"}}
 {"id": "rem-in", "prompt": "remind me in 10 minutes to take the laundry out", "tool": "create_reminder", "checks": {"text~": "laundry", "due_in_minutes": 10}}
 {"id": "rem-tomorrow", "prompt": "Can you set a reminder for tomorrow at 9am to submit the lab report?", "tool": "create_reminder", "checks": {"text~": "lab report", "due_local": "+1 09:00"}}
 {"id": "rem-hours", "prompt": "In two hours remind me to stretch", "tool": "create_reminder", "checks": {"text~": "stretch", "due_in_minutes": 120}}

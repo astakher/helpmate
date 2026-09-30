@@ -1,0 +1,16 @@
+{"id": "h-rem-45", "prompt": "remind me to water the plants in 45 minutes", "tool": "create_reminder", "checks": {"text~": "plants", "due_in_minutes": 45}}
+{"id": "h-rem-730", "prompt": "Set a reminder at 7:30pm to call the dentist", "tool": "create_reminder", "checks": {"text~": "dentist", "due_next_local": "19:30"}}
+{"id": "h-rem-noon", "prompt": "remind me tomorrow at noon to pay rent", "tool": "create_reminder", "checks": {"text~": "rent", "due_local": "+1 12:00"}}
+{"id": "h-rem-hour", "prompt": "In an hour, remind me to check the oven", "tool": "create_reminder", "checks": {"text~": "oven", "due_in_minutes": 60}}
+{"id": "h-rem-daily", "prompt": "Remind me every day at 7am to take my vitamins", "tool": "create_reminder", "checks": {"text~": "vitamin", "recurrence~": "DAILY", "due_next_local": "07:00"}}
+{"id": "h-rem-friday", "prompt": "Remind me on Friday at 3pm to submit the timesheet", "tool": "create_reminder", "checks": {"text~": "timesheet", "due_next_local": "FR 15:00"}}
+{"id": "h-rem-days", "prompt": "Remind me in 2 days to return the library books", "tool": "create_reminder", "checks": {"text~": "library", "due_in_minutes": 2880}}
+{"id": "h-task-someday", "prompt": "Add 'learn Rust' to my someday list", "tool": "create_task", "checks": {"title~": "rust", "horizon": "someday"}}
+{"id": "h-task-year", "prompt": "I have to finish the thesis draft this year, add it as a task", "tool": "create_task", "checks": {"title~": "thesis", "horizon": "year"}}
+{"id": "h-task-week", "prompt": "Put call the landlord on this week's tasks", "tool": "create_task", "checks": {"title~": "landlord", "horizon": "week"}}
+{"id": "h-list-1", "prompt": "Any reminders coming up?", "tool": "list_reminders", "checks": {}}
+{"id": "h-list-2", "prompt": "Can you list the reminders I've set?", "tool": "list_reminders", "checks": {}}
+{"id": "h-chat-thanks", "prompt": "Thanks, that's all for now!", "tool": null, "checks": {}}
+{"id": "h-chat-leap", "prompt": "How many days are in a leap year?", "tool": null, "checks": {}}
+{"id": "h-chat-about", "prompt": "In one sentence, what is a reminder app for?", "tool": null, "checks": {}}
+{"id": "h-chat-advice", "prompt": "Give me one tip for managing my tasks better.", "tool": null, "checks": {}}

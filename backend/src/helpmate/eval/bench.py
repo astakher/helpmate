@@ -1,12 +1,25 @@
+# Stand-in for Workstream A - not part of the Part C deliverable
 """Model benchmark: which local model should HelpMate use on this machine?
 
 For each model it measures load time, GPU offload / VRAM, time to first token, generation speed,
 and tool-calling quality on the seed prompts (golden_seed.jsonl) using HelpMate's real tool
-definitions. Results go to docs/benchmarks/<host>.md (+ .json).
+definitions. Results go to docs/benchmarks/<host>[-<tag>].md (+ .json).
 
     cd backend
     uv run helpmate-bench                                  # llama3.2:3b and qwen3:4b
     uv run helpmate-bench --models llama3.2:3b llama3.1:8b --runs 3
+    uv run helpmate-bench --models llama3.2:3b --pipeline baseline --cases holdout --tag x
+
+Pipelines:
+- improved (default): agent/llm_tools.py. Model-facing tool specs + system prompt; the owner's
+  time words are resolved to due_at in code; invalid calls are sent back once (validate-and-retry).
+  "Args valid" then means the resolved args pass the canonical models.
+- routed: improved, plus a first classification call with no tools attached (structured output);
+  then a plain reply with no tools, or a call offering only the chosen tool.
+- baseline: the Sep 29 setup. Canonical specs, the model must write ISO datetimes, no retry.
+
+Case sets: golden_seed.jsonl (15, also used while designing the improved prompt) and
+golden_holdout.jsonl (16, written before any improved run and never used for tuning).
 
 Needs Ollama running locally (OLLAMA_HOST=127.0.0.1:11434). Temperature is 0 so runs are
 comparable.
@@ -24,18 +37,29 @@ import subprocess
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from datetime import time as dtime
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import ValidationError
 
+from helpmate.agent import llm_tools
 from helpmate.agent.tools import ToolRegistry, default_registry
+from helpmate.agent.when import WEEKDAYS
 from helpmate.settings import REPO_ROOT, Settings
 
 DEFAULT_MODELS = ["llama3.2:3b", "qwen3:4b"]
+CASE_FILES = {"seed": "golden_seed.jsonl", "holdout": "golden_holdout.jsonl"}
+Pipeline = Literal["baseline", "improved", "routed"]
+PIPELINE_NOTES = {
+    "baseline": "model writes ISO datetimes itself, no retry",
+    "improved": "time words resolved in code, validate-and-retry once; see agent/llm_tools.py",
+    "routed": "improved + a no-tools classification call first, then only the chosen tool "
+    "(TTFT includes the classification)",
+}
 
 
 @dataclass
@@ -58,6 +82,8 @@ class CaseResult:
     args_strict_ok: bool | None  # args pass HelpMate's pydantic validation as-is
     checks_ok: bool | None  # content/time checks, with naive datetimes read as local time
     notes: list[str] = field(default_factory=list)
+    retried: bool = False  # improved pipeline: the first call was invalid and was sent back once
+    route: str | None = None  # routed pipeline: what the classification step chose
 
 
 @dataclass
@@ -86,15 +112,17 @@ class ModelReport:
                 sum(bool(c.args_strict_ok) for c in tool_cases), len(tool_cases)
             ),
             "checks_pct": _pct(sum(bool(c.checks_ok) for c in tool_cases), len(tool_cases)),
+            "retries": sum(c.retried for c in self.cases),
         }
 
 
-def load_cases() -> list[Case]:
-    text = resources.files("helpmate.eval").joinpath("golden_seed.jsonl").read_text("utf-8")
+def load_cases(case_set: str = "seed") -> list[Case]:
+    text = resources.files("helpmate.eval").joinpath(CASE_FILES[case_set]).read_text("utf-8")
     return [Case(**json.loads(line)) for line in text.splitlines() if line.strip()]
 
 
 def system_prompt(now: datetime, tz: ZoneInfo) -> str:
+    """The baseline (Sep 29) prompt. The improved one is llm_tools.system_prompt."""
     local = now.astimezone(tz)
     return (
         "You are HelpMate, a concise personal assistant running on the owner's laptop. "
@@ -106,10 +134,17 @@ def system_prompt(now: datetime, tz: ZoneInfo) -> str:
 
 
 class Bench:
-    def __init__(self, client: httpx.AsyncClient, tools: ToolRegistry, tz: ZoneInfo) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        tools: ToolRegistry,
+        tz: ZoneInfo,
+        pipeline: Pipeline = "improved",
+    ) -> None:
         self._client = client
         self._tools = tools
         self._tz = tz
+        self.pipeline = pipeline
 
     async def ollama_version(self) -> str:
         response = await self._client.get("/api/version")
@@ -147,24 +182,82 @@ class Bench:
 
     async def _run_case(self, model: str, case: Case) -> CaseResult:
         now = datetime.now(self._tz)
+        improved = self.pipeline in ("improved", "routed")
+        prompt = (llm_tools.system_prompt if improved else system_prompt)(now, self._tz)
+        specs = llm_tools.specs(self._tools) if improved else self._tools.specs()
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": case.prompt},
+        ]
+
+        started = time.perf_counter()
+        route = None
+        if self.pipeline == "routed":
+            route = await self._route(model, case.prompt)
+            specs = [s for s in specs if s.name == route]  # "reply" -> no tools at all
+        first, calls, final = await self._chat(model, messages, specs)
+        resolved: dict[str, Any] | None = None
+        error: str | None = None
+        retried = False
+        if improved and calls:
+            resolved, error = self._resolve(calls[0], now)
+            if error:  # validate-and-retry: send the problem back to the model once
+                retried = True
+                messages += [
+                    {"role": "assistant", "content": "", "tool_calls": calls[:1]},
+                    {
+                        "role": "tool",
+                        "tool_name": calls[0]["function"]["name"],
+                        "content": f"Error: {error} Call the tool again with corrected "
+                        "arguments, or reply in plain text.",
+                    },
+                ]
+                _, calls, final = await self._chat(model, messages, specs)
+                resolved, error = self._resolve(calls[0], now) if calls else (None, None)
+        total_ms = (time.perf_counter() - started) * 1000
+        result = self._score(
+            case, calls, now, first, started, total_ms, final, resolved, error, retried
+        )
+        result.route = route
+        if route is not None and not result.tool_ok:
+            result.notes.insert(0, f"route={route}")
+        return result
+
+    async def _route(self, model: str, text: str) -> str:
+        payload: dict[str, Any] = {
+            "model": model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": llm_tools.ROUTER_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            "format": llm_tools.ROUTE_FORMAT,
+            "options": {"temperature": 0, "num_predict": 20},
+            "keep_alive": "10m",
+        }
+        if model.startswith("qwen3"):
+            payload["think"] = False
+        response = await self._client.post("/api/chat", json=payload)
+        response.raise_for_status()
+        return llm_tools.parse_route((response.json().get("message") or {}).get("content", ""))
+
+    async def _chat(
+        self, model: str, messages: list[dict[str, Any]], specs: list[Any]
+    ) -> tuple[float | None, list[dict[str, Any]], dict[str, Any]]:
         payload: dict[str, Any] = {
             "model": model,
             "stream": True,
-            "messages": [
-                {"role": "system", "content": system_prompt(now, self._tz)},
-                {"role": "user", "content": case.prompt},
-            ],
-            "tools": [
-                {"type": "function", "function": s.model_dump()} for s in self._tools.specs()
-            ],
+            "messages": messages,
+            "tools": [{"type": "function", "function": s.model_dump()} for s in specs],
             "options": {"temperature": 0},
             "keep_alive": "10m",
         }
         if model.startswith("qwen3"):
             payload["think"] = False
 
-        started = time.perf_counter()
-        first: float | None = None
+        content = ""
+        chunks: list[tuple[float, int]] = []  # (arrival time, len(content) so far)
+        tool_at: float | None = None
         calls: list[dict[str, Any]] = []
         final: dict[str, Any] = {}
         async with self._client.stream("POST", "/api/chat", json=payload) as response:
@@ -174,13 +267,27 @@ class Bench:
                     continue
                 chunk = json.loads(line)
                 message = chunk.get("message") or {}
-                if first is None and (message.get("content") or message.get("tool_calls")):
-                    first = time.perf_counter()
-                calls.extend(message.get("tool_calls") or [])
+                if text := message.get("content"):
+                    content += text
+                    chunks.append((time.perf_counter(), len(content)))
+                if message.get("tool_calls"):
+                    tool_at = tool_at or time.perf_counter()
+                    calls.extend(message["tool_calls"])
                 if chunk.get("done"):
                     final = chunk
-        total_ms = (time.perf_counter() - started) * 1000
-        return self._score(case, calls, now, first, started, total_ms, final)
+        return _first_visible(content, chunks, tool_at), calls, final
+
+    def _resolve(
+        self, call: dict[str, Any], now: datetime
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        function = call.get("function") or {}
+        try:
+            args = llm_tools.resolve(
+                function.get("name", ""), _arguments(call), self._tools, now, self._tz
+            )
+        except llm_tools.ResolveError as exc:
+            return None, str(exc)
+        return args, None
 
     def _score(
         self,
@@ -191,9 +298,12 @@ class Bench:
         started: float,
         total_ms: float,
         final: dict[str, Any],
+        resolved: dict[str, Any] | None = None,
+        error: str | None = None,
+        retried: bool = False,
     ) -> CaseResult:
         called = calls[0]["function"]["name"] if calls else None
-        args: dict[str, Any] = (calls[0]["function"].get("arguments") or {}) if calls else {}
+        args: dict[str, Any] = _arguments(calls[0]) if calls else {}
         result = CaseResult(
             id=case.id,
             ttft_ms=_round((first - started) * 1000) if first else None,
@@ -206,17 +316,24 @@ class Bench:
             tool_ok=called == case.tool,
             args_strict_ok=None,
             checks_ok=None,
+            retried=retried,
         )
         if case.tool is None or not result.tool_ok:
             return result
-        tool = self._tools.get(case.tool)
-        assert tool is not None
-        try:
-            tool.args_model.model_validate(args)
-            result.args_strict_ok = True
-        except ValidationError as exc:
-            result.args_strict_ok = False
-            result.notes.append(f"strict: {exc.errors()[0]['msg']}")
+        if self.pipeline in ("improved", "routed"):
+            result.args_strict_ok = resolved is not None
+            if error:
+                result.notes.append(f"invalid{' after retry' if retried else ''}: {error}")
+            args = resolved if resolved is not None else args
+        else:
+            tool = self._tools.get(case.tool)
+            assert tool is not None
+            try:
+                tool.args_model.model_validate(args)
+                result.args_strict_ok = True
+            except ValidationError as exc:
+                result.args_strict_ok = False
+                result.notes.append(f"strict: {exc.errors()[0]['msg']}")
         result.checks_ok, notes = check_args(args, case.checks, now, self._tz)
         result.notes += notes
         return result
@@ -250,6 +367,13 @@ def check_args(
                 minute,
             ):
                 notes.append(f"due_at={args.get('due_at')!r}, expected {target_date} {hhmm}")
+        elif key == "due_next_local":  # "[MO ]HH:MM": the next such local time after now
+            *day, hhmm = expected.split(" ")
+            hour, minute = map(int, hhmm.split(":"))
+            target = _next_local(now, tz, hour, minute, day[0] if day else None)
+            due = _parse_dt(args.get("due_at"), tz)
+            if due is None or due.astimezone(tz).replace(second=0, microsecond=0) != target:
+                notes.append(f"due_at={args.get('due_at')!r}, expected {target:%a %Y-%m-%d %H:%M}")
         elif args.get(key) != expected:
             notes.append(f"{key}={args.get(key)!r}, expected {expected!r}")
     return not notes, notes
@@ -262,21 +386,25 @@ def render_markdown(host: dict[str, str], reports: list[ModelReport]) -> str:
         f"- Date: {host['date']}",
         f"- GPU: {host['gpu']}",
         f"- Ollama: {host['ollama']}",
-        f"- Prompts: {host['cases']} seed cases x {host['runs']} run(s), temperature 0",
+        f"- Prompts: {host['cases']} {host.get('case_set', 'seed')} cases x {host['runs']} run(s), "
+        "temperature 0",
+        f"- Pipeline: {host.get('pipeline', 'baseline')} "
+        f"({PIPELINE_NOTES[host.get('pipeline', 'baseline')]})",
         "",
         "| Model | Load s | GPU % | VRAM GB | TTFT median ms | TTFT p90 ms | tok/s | "
-        "Tool choice | Args valid (strict) | Args correct |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "Tool choice | Args valid (strict) | Args correct | Retries |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for report in reports:
         if report.error:
-            lines.append(f"| {report.model} | error: {report.error} |||||||||")
+            lines.append(f"| {report.model} | error: {report.error} ||||||||||")
             continue
         s = report.summary()
         lines.append(
             f"| {s['model']} | {s['load_s']} | {_fmt(s['gpu_percent'])} | {_fmt(s['vram_gb'])} | "
             f"{_fmt(s['ttft_median_ms'])} | {_fmt(s['ttft_p90_ms'])} | {_fmt(s['tokens_per_s'])} | "
-            f"{s['tool_choice_pct']}% | {s['args_strict_pct']}% | {s['checks_pct']}% |"
+            f"{s['tool_choice_pct']}% | {s['args_strict_pct']}% | {s['checks_pct']}% | "
+            f"{s['retries']} |"
         )
     lines += [
         "",
@@ -298,7 +426,9 @@ def render_markdown(host: dict[str, str], reports: list[ModelReport]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def host_info(ollama: str, cases: int, runs: int) -> dict[str, str]:
+def host_info(
+    ollama: str, cases: int, runs: int, pipeline: str = "improved", case_set: str = "seed"
+) -> dict[str, str]:
     gpu = "unknown (nvidia-smi not found)"
     if shutil.which("nvidia-smi"):
         query = ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"]
@@ -313,17 +443,23 @@ def host_info(ollama: str, cases: int, runs: int) -> dict[str, str]:
         "ollama": ollama,
         "cases": str(cases),
         "runs": str(runs),
+        "pipeline": pipeline,
+        "case_set": case_set,
     }
 
 
 async def collect(
-    models: list[str], runs: int, settings: Settings
+    models: list[str],
+    runs: int,
+    settings: Settings,
+    pipeline: Pipeline = "improved",
+    case_set: str = "seed",
 ) -> tuple[dict[str, str], list[ModelReport]]:
-    cases = load_cases()
+    cases = load_cases(case_set)
     async with httpx.AsyncClient(
         base_url=settings.ollama_url, timeout=httpx.Timeout(300.0, connect=5.0)
     ) as client:
-        bench = Bench(client, default_registry(), settings.tz)
+        bench = Bench(client, default_registry(), settings.tz, pipeline)
         try:
             version = await bench.ollama_version()
         except httpx.ConnectError as exc:
@@ -334,12 +470,14 @@ async def collect(
         for model in models:
             print(f"benchmarking {model} ...", flush=True)
             reports.append(await bench.run_model(model, cases, runs))
-    return host_info(version, len(cases), runs), reports
+    return host_info(version, len(cases), runs, pipeline, case_set), reports
 
 
-def write_report(out_dir: Path, info: dict[str, str], reports: list[ModelReport]) -> Path:
+def write_report(
+    out_dir: Path, info: dict[str, str], reports: list[ModelReport], tag: str | None = None
+) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = info["host"].lower().replace(" ", "-")
+    stem = info["host"].lower().replace(" ", "-") + (f"-{tag}" if tag else "")
     markdown = render_markdown(info, reports)
     (out_dir / f"{stem}.md").write_text(markdown, encoding="utf-8", newline="\n")
     raw = {"host": info, "reports": [asdict(r) | {"summary": r.summary()} for r in reports]}
@@ -353,9 +491,14 @@ def main() -> None:
     parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
     parser.add_argument("--runs", type=int, default=1, help="repeat each prompt N times")
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "docs" / "benchmarks")
+    parser.add_argument("--pipeline", choices=sorted(PIPELINE_NOTES), default="improved")
+    parser.add_argument("--cases", choices=sorted(CASE_FILES), default="seed")
+    parser.add_argument("--tag", help="suffix for the report file name, e.g. holdout-baseline")
     args = parser.parse_args()
-    info, reports = asyncio.run(collect(args.models, args.runs, Settings()))
-    print(f"wrote {write_report(args.out, info, reports)}")
+    info, reports = asyncio.run(
+        collect(args.models, args.runs, Settings(), args.pipeline, args.cases)
+    )
+    print(f"wrote {write_report(args.out, info, reports, args.tag)}")
 
 
 def _rate(count: int | None, duration_ns: int | None) -> float | None:
@@ -377,6 +520,46 @@ def _round(value: float) -> float:
 
 def _fmt(value: object) -> str:
     return "–" if value is None else str(value)
+
+
+def _arguments(call: dict[str, Any]) -> dict[str, Any]:
+    raw = (call.get("function") or {}).get("arguments") or {}
+    if isinstance(raw, str):  # some models send the arguments as a JSON string
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _first_visible(
+    content: str, chunks: list[tuple[float, int]], tool_at: float | None
+) -> float | None:
+    """When the first answer text or tool call arrived, skipping <think>…</think> reasoning.
+    Thinking builds (qwen3:4b) stream their reasoning as content, often without the opening tag
+    (the chat template adds it), so everything up to the last </think> counts as thinking."""
+    end = content.rfind("</think>")
+    if end >= 0:
+        start = end + len("</think>")
+    elif content.lstrip().startswith("<think>"):
+        start = len(content)
+    else:
+        start = 0
+    start += len(content[start:]) - len(content[start:].lstrip())
+    text_at = next((t for t, length in chunks if length > start), None)
+    times = [t for t in (text_at, tool_at) if t is not None]
+    return min(times) if times else None
+
+
+def _next_local(
+    now: datetime, tz: ZoneInfo, hour: int, minute: int, day: str | None
+) -> datetime | None:
+    local = now.astimezone(tz)
+    for offset in range(8):
+        candidate = datetime.combine(local.date() + timedelta(days=offset), dtime(hour, minute), tz)
+        if candidate > local and (day is None or WEEKDAYS[candidate.weekday()][:2].upper() == day):
+            return candidate
+    return None
 
 
 def _parse_dt(value: object, tz: ZoneInfo) -> datetime | None:

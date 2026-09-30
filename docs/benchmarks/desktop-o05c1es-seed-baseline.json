@@ -1,0 +1,238 @@
+{
+  "host": {
+    "host": "DESKTOP-O05C1ES",
+    "date": "2026-09-29 21:15",
+    "gpu": "NVIDIA GeForce GTX 1050 Ti with Max-Q Design, 4096 MiB",
+    "ollama": "0.35.0",
+    "cases": "15",
+    "runs": "1",
+    "pipeline": "baseline",
+    "case_set": "seed"
+  },
+  "reports": [
+    {
+      "model": "llama3.2:3b",
+      "load_s": 14.24633840000024,
+      "gpu_percent": 100,
+      "vram_gb": 2.55,
+      "cases": [
+        {
+          "id": "rem-at",
+          "ttft_ms": 2465.6,
+          "total_ms": 2504.2,
+          "tokens_per_s": 27.4,
+          "prompt_tokens_per_s": 375.4,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "rem-in",
+          "ttft_ms": 915.1,
+          "total_ms": 953.5,
+          "tokens_per_s": 27.8,
+          "prompt_tokens_per_s": 5635.4,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": false,
+          "checks_ok": false,
+          "notes": [
+            "strict: Input should be a valid datetime or date, input is too short",
+            "due_at='PT10M', expected ~21:25"
+          ],
+          "retried": false
+        },
+        {
+          "id": "rem-tomorrow",
+          "ttft_ms": 1406.4,
+          "total_ms": 1444.8,
+          "tokens_per_s": 27.4,
+          "prompt_tokens_per_s": 5514.3,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "rem-hours",
+          "ttft_ms": 1275.3,
+          "total_ms": 1313.6,
+          "tokens_per_s": 27.5,
+          "prompt_tokens_per_s": 6933.3,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": false,
+          "notes": [
+            "due_at='2026-09-30T17:15:00-04:00', expected ~23:15"
+          ],
+          "retried": false
+        },
+        {
+          "id": "rem-recurring",
+          "ttft_ms": 1373.1,
+          "total_ms": 1412.4,
+          "tokens_per_s": 27.3,
+          "prompt_tokens_per_s": 5474.9,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": false,
+          "notes": [
+            "recurrence='' lacks 'MO'"
+          ],
+          "retried": false
+        },
+        {
+          "id": "task-term",
+          "ttft_ms": 958.9,
+          "total_ms": 997.6,
+          "tokens_per_s": 27.7,
+          "prompt_tokens_per_s": 5475.3,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "task-someday",
+          "ttft_ms": 849.8,
+          "total_ms": 888.7,
+          "tokens_per_s": 27.8,
+          "prompt_tokens_per_s": 5405.9,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "task-week",
+          "ttft_ms": 810.1,
+          "total_ms": 849.2,
+          "tokens_per_s": 27.8,
+          "prompt_tokens_per_s": 5552.0,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "task-default",
+          "ttft_ms": 792.7,
+          "total_ms": 831.4,
+          "tokens_per_s": 27.8,
+          "prompt_tokens_per_s": 7052.9,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "list-1",
+          "ttft_ms": 455.7,
+          "total_ms": 494.3,
+          "tokens_per_s": 28.7,
+          "prompt_tokens_per_s": 6992.1,
+          "called": "list_reminders",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "list-2",
+          "ttft_ms": 454.3,
+          "total_ms": 492.7,
+          "tokens_per_s": 28.8,
+          "prompt_tokens_per_s": 6977.9,
+          "called": "list_reminders",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "chat-greeting",
+          "ttft_ms": 455.0,
+          "total_ms": 493.6,
+          "tokens_per_s": 28.8,
+          "prompt_tokens_per_s": 6978.8,
+          "called": "list_reminders",
+          "tool_ok": false,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "chat-fact",
+          "ttft_ms": 455.6,
+          "total_ms": 494.6,
+          "tokens_per_s": 28.7,
+          "prompt_tokens_per_s": 6883.0,
+          "called": "list_reminders",
+          "tool_ok": false,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "chat-explain",
+          "ttft_ms": 473.6,
+          "total_ms": 511.8,
+          "tokens_per_s": 28.7,
+          "prompt_tokens_per_s": 5505.5,
+          "called": "list_reminders",
+          "tool_ok": false,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": [],
+          "retried": false
+        },
+        {
+          "id": "chat-negation",
+          "ttft_ms": 436.0,
+          "total_ms": 474.6,
+          "tokens_per_s": 28.8,
+          "prompt_tokens_per_s": 5517.7,
+          "called": null,
+          "tool_ok": true,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": [],
+          "retried": false
+        }
+      ],
+      "error": null,
+      "summary": {
+        "model": "llama3.2:3b",
+        "load_s": 14.2,
+        "gpu_percent": 100,
+        "vram_gb": 2.55,
+        "ttft_median_ms": 810.1,
+        "ttft_p90_ms": 1406.4,
+        "tokens_per_s": 27.8,
+        "tool_choice_pct": 80,
+        "args_strict_pct": 91,
+        "checks_pct": 73,
+        "retries": 0
+      }
+    }
+  ]
+}
