@@ -42,3 +42,21 @@ def test_speak_returns_wav(client):
     response = client.post("/speak", json={"text": "hello"})
     assert response.headers["content-type"] == "audio/wav"
     assert response.content[:4] == b"RIFF"
+
+
+def test_undecodable_recording_is_a_422_with_a_hint(monkeypatch):
+    """A recording stopped before any sound gives a bare webm header; that's the owner's input,
+    not a server error (it used to be a 500)."""
+    from helpmate_speech import app as app_module
+    from helpmate_speech.engines import AudioDecodeError, FakeEngine
+
+    class Broken(FakeEngine):
+        def transcribe(self, audio, mime, language):
+            raise AudioDecodeError("End of file")
+
+    monkeypatch.setattr(app_module, "load_engine", lambda settings: Broken("x"))
+    with TestClient(create_app(SpeechSettings(_env_file=None))) as c:
+        response = c.post(
+            "/transcribe", content=b"\x1aE\xdf\xa3", headers={"Content-Type": "audio/webm"}
+        )
+    assert response.status_code == 422 and "hold the button" in response.json()["detail"]

@@ -105,7 +105,7 @@ To use real components, edit `.env`, one seam at a time:
 | To use | Set | Also needs |
 |---|---|---|
 | Ollama | `HELPMATE_LLM=ollama` | step 2 |
-| Real speech | `HELPMATE_STT=http`, `HELPMATE_TTS=http`, `SPEECH_ENGINE=real` | `./scripts/get_models.ps1` (downloads the Kokoro model, ~140 MB; the Whisper model downloads on first use) |
+| Real speech | `HELPMATE_STT=http`, `HELPMATE_TTS=http`, `SPEECH_ENGINE=real` | `./scripts/get_models.ps1` once: installs the `real` extra (faster-whisper, kokoro-onnx) and downloads Kokoro **fp32** (325 MB + 28 MB voices) and Whisper `base` (~145 MB). `dev.ps1` then starts speech with `uv run --extra real`. A plain `uv sync` in `services/speech` removes the extra again; use `uv sync --extra real`. Voice needs the mic, so use Chrome on `127.0.0.1` (or HTTPS on a phone, §5). |
 | Postgres | `HELPMATE_REPO=postgres` | `docker compose -f infra/docker-compose.yml up -d` |
 | Web Push | `HELPMATE_NOTIFIER=webpush` + VAPID keys | `cd backend; uv run python ../scripts/gen_vapid.py --write` (once; share the same keys across hosts). Then `./scripts/dev.ps1 -Prod`, open `http://127.0.0.1:8000/settings` → **Enable notifications** → **Send a test notification**. Not on :5173: the dev server has no service worker. |
 
@@ -135,6 +135,12 @@ To use real components, edit `.env`, one seam at a time:
   (icon left of the address bar) and reload.
 - **Push worked, then stopped after restarting the API:** the testbed keeps subscriptions in memory. Open
   Settings once; the page re-registers this browser automatically.
+- **Voice: `TypeError: open() got an unexpected keyword argument 'metadata_errors'`:** PyAV 19 broke
+  faster-whisper 1.2.1. `services/speech` pins `av<19`; run `uv sync --extra real` to get 18.x back.
+- **Voice replies take many seconds to start:** check `/health` on :8001 says `kokoro-v1.0.onnx` (fp32). The
+  int8 file is ~10x slower on CPUs without AVX-512 VNNI such as the i7-8750H.
+- **Whisper slower than you'd like:** `SPEECH_WHISPER_LANGUAGE=en` skips language detection (1.2 s → 0.66 s for
+  2.4 s of speech on the XPS) at the cost of auto-detecting other languages.
 - **Docker ports reachable from the LAN:** every port in `infra/docker-compose.yml` must be written `127.0.0.1:<port>:<port>`.
 - **Timezone errors in tests:** make sure `tzdata` is installed (`uv sync` handles it). Windows has no system timezone database.
 - **Shell script fails with `\r` in a container:** `.gitattributes` forces LF. Run `git add --renormalize .` once.

@@ -1,6 +1,22 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import type { Source } from "../../api/types";
 import { ProposalCard } from "../approvals/ProposalCard";
+import { PushToTalkButton, type TranscriptInfo } from "../voice/PushToTalkButton";
+import { useSpeaker } from "../voice/useSpeaker";
 import { useChat, type Turn } from "./useChat";
+
+const AUTO_SEND_KEY = "helpmate.voice.autoSend";
+
+function readAutoSend(): boolean {
+  try {
+    return localStorage.getItem(AUTO_SEND_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** One voice exchange, measured the way the spec counts it (without the owner's edit time). */
+type VoiceStats = { transcribeMs: number; replyToAudioMs: number };
 
 const SUGGESTIONS = [
   "remind me to stretch in 1 minute",
@@ -10,19 +26,67 @@ const SUGGESTIONS = [
 ];
 
 export function ChatPage() {
-  const { turns, busy, send, stop } = useChat();
+  const { speak, stop: stopSpeaking, speaking, error: speakError } = useSpeaker();
+  const voice = useRef<{ transcribeMs: number; sentAt: number } | null>(null);
+  const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null);
+
+  const onReplyDone = useCallback(
+    (reply: string, source: Source) => {
+      if (source !== "voice") return; // only answer out loud when the owner spoke
+      const pending = voice.current;
+      void speak(reply, () => {
+        if (pending) {
+          setVoiceStats({ transcribeMs: pending.transcribeMs, replyToAudioMs: performance.now() - pending.sentAt });
+        }
+      });
+    },
+    [speak],
+  );
+
+  const { turns, busy, send, stop } = useChat({ onReplyDone });
   const [draft, setDraft] = useState("");
+  const [draftSource, setDraftSource] = useState<Source>("text");
+  const [transcribeMs, setTranscribeMs] = useState(0);
+  const [autoSend, setAutoSend] = useState(readAutoSend);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
   }, [turns]);
 
+  function sendMessage(text: string, source: Source, sttMs = 0) {
+    voice.current = source === "voice" ? { transcribeMs: sttMs, sentAt: performance.now() } : null;
+    void send(text, source);
+  }
+
   function submit(event?: FormEvent) {
     event?.preventDefault();
     if (!draft.trim() || busy) return;
-    void send(draft);
+    sendMessage(draft, draftSource, transcribeMs);
     setDraft("");
+    setDraftSource("text");
+  }
+
+  function onTranscript(text: string, info: TranscriptInfo) {
+    if (autoSend && !busy) {
+      sendMessage(text, "voice", info.roundTripMs);
+      return;
+    }
+    // show the transcript for a quick check/edit; Enter sends it as a voice message
+    setDraft(text);
+    setDraftSource("voice");
+    setTranscribeMs(info.roundTripMs);
+    inputRef.current?.focus();
+  }
+
+  function toggleAutoSend(on: boolean) {
+    setAutoSend(on);
+    try {
+      localStorage.setItem(AUTO_SEND_KEY, on ? "1" : "0");
+    } catch {
+      // private mode etc.: the choice just isn't remembered
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -63,13 +127,17 @@ export function ChatPage() {
         </label>
         <textarea
           id="composer-input"
+          ref={inputRef}
           rows={1}
           value={draft}
           placeholder="Message HelpMate…"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (!e.target.value.trim()) setDraftSource("text");
+          }}
           onKeyDown={onKeyDown}
         />
-        {/* Phase 5: <PushToTalkButton onTranscript={(t) => send(t, "voice")} /> goes here */}
+        <PushToTalkButton onTranscript={onTranscript} onStart={stopSpeaking} disabled={busy} />
         {busy ? (
           <button type="button" className="btn" onClick={stop}>
             Stop
@@ -80,7 +148,36 @@ export function ChatPage() {
           </button>
         )}
       </form>
+      <div className="voice-bar">
+        <label className="inline">
+          <input type="checkbox" checked={autoSend} onChange={(e) => toggleAutoSend(e.target.checked)} /> Send
+          voice messages right away
+        </label>
+        {speaking && (
+          <button type="button" className="btn btn--small" onClick={stopSpeaking}>
+            Stop speaking
+          </button>
+        )}
+        {speakError && (
+          <span className="error" role="alert">
+            {speakError}
+          </span>
+        )}
+        {voiceStats && <VoiceTiming stats={voiceStats} />}
+      </div>
     </section>
+  );
+}
+
+/** The spec's voice target: owner stops talking -> first audio of the reply in ≤ 4 s. */
+function VoiceTiming({ stats }: { stats: VoiceStats }) {
+  const total = stats.transcribeMs + stats.replyToAudioMs;
+  const s = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  return (
+    <span className="msg__meta" role="status">
+      Last voice reply: heard in {s(stats.transcribeMs)} + answered and spoken in {s(stats.replyToAudioMs)} ={" "}
+      <strong>{s(total)}</strong> {total <= 4000 ? "(within the 4 s target)" : "(over the 4 s target)"}
+    </span>
   );
 }
 

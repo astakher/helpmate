@@ -345,3 +345,23 @@ export async function sendTestPush() {
 export async function fetchDeliveries() {
   return unwrap(await api.GET("/api/push/deliveries"));
 }
+
+// --- Voice (Part C) ---
+
+/** Upload a recording as a raw body (never multipart, so the server never spools it to disk). */
+export async function transcribeAudio(audio: Blob, language?: string) {
+  return unwrap(
+    await api.POST("/api/voice/transcribe", {
+      params: { query: language ? { language } : {} },
+      body: audio as unknown as string,
+      bodySerializer: (body) => body as unknown as BodyInit,
+      headers: { "Content-Type": audio.type || "audio/webm" },
+    }),
+  );
+}
+
+/** Kokoro TTS on the server -> a WAV blob. */
+export async function synthesizeSpeech(text: string, voice?: string): Promise<Blob> {
+  const result = await api.POST("/api/voice/speak", { body: { text, voice }, parseAs: "blob" });
+  return unwrap(result) as Blob;
+}

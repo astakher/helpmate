@@ -14,7 +14,13 @@ dependencies = [
 
 [project.optional-dependencies]
 # Real models (Phase 5): uv sync --extra real
-real = []
+real = [
+    "faster-whisper>=1.2",
+    "kokoro-onnx>=0.6",
+    # faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which PyAV 19 removed
+    # (TypeError on every transcription). Lift this once faster-whisper supports av 19.
+    "av>=15,<19",
+]
 
 [project.scripts]
 helpmate-speech = "helpmate_speech.app:run"

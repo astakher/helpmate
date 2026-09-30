@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from helpmate_speech import __version__
-from helpmate_speech.engines import Engine, TranscriptOut, load_engine
+from helpmate_speech.engines import AudioDecodeError, Engine, TranscriptOut, load_engine
 from helpmate_speech.settings import SpeechSettings
 
 log = logging.getLogger("helpmate.speech")
@@ -78,6 +78,13 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
                 mime,
                 language or settings.whisper_language,
             )
+        except AudioDecodeError as exc:
+            log.info("undecodable upload: %d bytes of %s", len(audio), mime)  # sizes only
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Couldn't read the recording. It was probably too short: hold the button while you "
+                "talk.",
+            ) from exc
         finally:
             audio.clear()
         log.info("transcribed %d ms of audio in %d ms", result.duration_ms, result.stt_ms)

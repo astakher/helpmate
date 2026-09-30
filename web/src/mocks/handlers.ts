@@ -37,6 +37,9 @@ type Db = {
   vapidKey: string | null;
   subscriptions: SubscriptionIn[];
   deliveries: Delivery[];
+  voiceTranscript: string; // what the mock STT "hears"
+  voiceUploads: string[]; // Content-Type of each uploaded recording
+  spoken: string[]; // every text sent to the mock TTS
 };
 
 export const db: Db = fresh();
@@ -79,6 +82,9 @@ function fresh(): Db {
     vapidKey: MOCK_VAPID_KEY,
     subscriptions: [],
     deliveries: [],
+    voiceTranscript: "what are my reminders?",
+    voiceUploads: [],
+    spoken: [],
   };
 }
 
@@ -410,6 +416,16 @@ export const handlers = [
   ),
 
   // --- settings ---
+  http.post("*/api/voice/transcribe", async ({ request }) => {
+    const audio = await request.arrayBuffer();
+    if (!audio.byteLength) return HttpResponse.json({ detail: "empty audio" }, { status: 422 });
+    db.voiceUploads.push(request.headers.get("content-type") ?? "");
+    return HttpResponse.json({ text: db.voiceTranscript, language: "en", duration_ms: 1500, stt_ms: 420 });
+  }),
+  http.post<never, { text: string }>("*/api/voice/speak", async ({ request }) => {
+    db.spoken.push((await request.json()).text);
+    return new HttpResponse(new Uint8Array([82, 73, 70, 70]), { headers: { "Content-Type": "audio/wav" } }); // "RIFF"
+  }),
   http.get("*/api/push/vapid-public-key", () => HttpResponse.json({ public_key: db.vapidKey })),
   http.post<never, SubscriptionIn>("*/api/push/subscriptions", async ({ request }) => {
     const subscription = await request.json();

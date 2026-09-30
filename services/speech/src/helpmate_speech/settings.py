@@ -28,7 +28,8 @@ class SpeechSettings(BaseSettings):
     cpu_threads: int = 4
 
     # Kokoro (kokoro-onnx)
-    kokoro_model: Path = SERVICE_ROOT / "models" / "kokoro-v1.0.int8.onnx"
+    # fp32, not int8: on CPUs without AVX-512 VNNI (the XPS's i7-8750H) int8 was 10x slower
+    kokoro_model: Path = SERVICE_ROOT / "models" / "kokoro-v1.0.onnx"
     kokoro_voices: Path = SERVICE_ROOT / "models" / "voices-v1.0.bin"
     kokoro_voice: str = "af_heart"
 

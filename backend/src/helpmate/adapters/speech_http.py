@@ -15,6 +15,11 @@ class SpeechServiceUnavailable(RuntimeError):
     pass
 
 
+class SpeechInputError(ValueError):
+    """The speech service rejected the input itself (e.g. a recording too short to decode).
+    The voice route answers 422 with this message instead of a 500."""
+
+
 class HttpSTT:
     is_fake = False
 
@@ -33,6 +38,8 @@ class HttpSTT:
             raise SpeechServiceUnavailable(
                 f"speech service not reachable at {self._client.base_url}"
             ) from exc
+        if response.status_code == 422:
+            raise SpeechInputError(_detail(response))
         response.raise_for_status()
         return Transcript.model_validate(response.json())
 
@@ -53,3 +60,11 @@ class HttpTTS:
             ) from exc
         response.raise_for_status()
         return response.content
+
+
+def _detail(response: httpx.Response) -> str:
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        detail = None
+    return detail if isinstance(detail, str) else "the speech service couldn't use that audio"

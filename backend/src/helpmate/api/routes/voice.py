@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from helpmate.adapters.speech_http import SpeechServiceUnavailable
+from helpmate.adapters.speech_http import SpeechInputError, SpeechServiceUnavailable
 from helpmate.api.deps import ContainerDep, current_user
 from helpmate.api.schemas.bodies import SpeakIn
 from helpmate.domain.models import Transcript
@@ -51,6 +51,8 @@ async def transcribe(
         return await container.stt.transcribe(bytes(audio), full_mime, language)
     except SpeechServiceUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    except SpeechInputError as exc:  # e.g. a recording too short to decode
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     finally:
         audio.clear()
 

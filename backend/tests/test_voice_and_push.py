@@ -83,3 +83,19 @@ async def test_notification_settings_round_trip(client):
     assert (await client.get("/api/settings/notifications")).json() == body
     bad = await client.put("/api/settings/notifications", json={**body, "timezone": "Mars/Base"})
     assert bad.status_code == 422
+
+
+async def test_transcribe_turns_an_unreadable_recording_into_a_422(client, container):
+    from helpmate.adapters.speech_http import SpeechInputError
+
+    class TooShort:
+        name, is_fake = "stub", True
+
+        async def transcribe(self, audio, mime, language=None):
+            raise SpeechInputError("Couldn't read the recording. Hold the button while you talk.")
+
+    container.stt = TooShort()
+    response = await client.post(
+        "/api/voice/transcribe", content=b"\x1aE\xdf\xa3", headers={"Content-Type": "audio/webm"}
+    )
+    assert response.status_code == 422 and "Hold the button" in response.json()["detail"]

@@ -29,7 +29,8 @@ Only Part C moves across, and it has to plug in **without changes**.
 | Path | What it is | Status |
 |---|---|---|
 | `web/` | React 19 + TS + Vite PWA: chat, approvals, today, tasks, folders, memory, settings, login/2FA, system status, service worker (`src/sw.ts`) | built (Phase 4) |
-| `services/speech/` | Speech service on `127.0.0.1:8001`: `POST /transcribe`, `POST /speak`, `GET /health`. Own uv env. | fake engine; real faster-whisper + Kokoro in Phase 5 |
+| `services/speech/` | Speech service on `127.0.0.1:8001`: `POST /transcribe`, `POST /speak`, `GET /health`. Own uv env. `SPEECH_ENGINE=real`: faster-whisper `base` int8 + Kokoro fp32 on CPU (the `real` extra; `scripts/get_models.ps1`) | built (Phase 5); fake engine for CI |
+| `scripts/get_models.ps1` | installs the `real` extra and downloads Kokoro fp32 + voices and Whisper `base` | built |
 | `backend/src/helpmate/adapters/speech_http.py` | `HttpSTT`, `HttpTTS`: call the speech service over loopback | built |
 | `backend/src/helpmate/adapters/webpush_notifier.py` | `WebPushNotifier` (pywebpush `webpush_async`, VAPID, TTL, `Urgency`, 404/410 pruning) | built (Phase 6); desktop Chrome measured ~1 s due → shown |
 | `backend/src/helpmate/adapters/quiet_hours.py` | `QuietHoursNotifier` decorator (quiet hours, `max_per_hour`, private previews; holds in memory) | built (Phase 6) |
@@ -144,9 +145,11 @@ No GPU, Ollama, Postgres or network needed.
 cd backend
 uv run pytest -q tests/test_voice_and_push.py tests/test_speech_http.py tests/test_webpush.py tests/test_quiet_hours.py tests/contracts/test_notifier.py tests/test_part_c_boundary.py
 
-# speech service (fake engine)
+# speech service (fake engine; the real round trip Kokoro -> Whisper is skipped without models)
 cd services/speech
 uv run pytest -q
+# ...and with the real models installed (./scripts/get_models.ps1):
+uv run --extra real pytest -q
 
 # web app (MSW mocks in place of the backend)
 cd web

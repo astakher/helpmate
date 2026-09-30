@@ -49,7 +49,11 @@ if ($Prod) {
 
 Open-ServiceWindow "HelpMate API :8000" "$root\backend" "uv run helpmate-api"
 if (-not $NoSpeech) {
-  Open-ServiceWindow "HelpMate speech :8001" "$root\services\speech" "uv run helpmate-speech"
+  # SPEECH_ENGINE=real needs the `real` extra (faster-whisper, kokoro-onnx); `uv run --extra real`
+  # keeps it installed (a plain `uv sync` would remove it again).
+  $realSpeech = Select-String -Path "$root\.env" -Pattern '^SPEECH_ENGINE=real\b' -Quiet
+  $speechCmd = if ($realSpeech) { "uv run --extra real helpmate-speech" } else { "uv run helpmate-speech" }
+  Open-ServiceWindow "HelpMate speech :8001" "$root\services\speech" $speechCmd
 }
 if ($Prod) {
   Write-Host "`nOpen http://127.0.0.1:8000 (production build served by FastAPI)" -ForegroundColor Green

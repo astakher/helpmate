@@ -751,3 +751,28 @@ input[type="radio"] {
   background: var(--ok-soft);
   color: var(--ok);
 }
+
+.ptt {
+  min-width: 3rem;
+  touch-action: none; /* hold-to-talk on phones without scrolling or text selection */
+  user-select: none;
+}
+
+.ptt--recording {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.ptt__error {
+  flex-basis: 100%;
+}
+
+.voice-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}

@@ -66,6 +66,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   the model fits. `LLAMA_ARG_FIT_TARGET=512` (MiB) fixes it; check `ollama ps` = 100% GPU.
 - `qwen3:4b` is the thinking-only 2507 build: `think:false` is ignored. Use `qwen3:4b-instruct`
   for a non-thinking comparison.
+- Speech: pin `av<19` (faster-whisper 1.2.1 passes `metadata_errors`, which PyAV 19 removed); use
+  Kokoro **fp32** (int8 is ~10x slower without AVX-512 VNNI); `uv sync` without `--extra real` removes
+  the real engine (`uv run` doesn't). Recordings under ~0.4 s are bare webm headers → 422, not 500.
 
 ## Status (update as phases land)
 - Done: Phase 0–2 (repo, CI, contract v0.1, walking skeleton), benchmark script, Phase 4 web
@@ -92,14 +95,19 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   `QuietHoursNotifier(WebPushNotifier)`; Settings → Enable / Send test (shows latency). Measured:
   test push and a model-created reminder both **~1 s from due to shown** (target ≤ 60 s). Needs
   `./scripts/dev.ps1 -Prod` (:8000). Phone push needs Phase 7 (HTTPS via Tailscale).
-- Next: Phase 5 real voice → Phase 7 Tailscale (phone). Midterm video ≈ Oct 26.
+- **Phase 5 voice works in Chrome** (Sep 30): push-to-talk (hold, tap, or Space/Enter) → transcript
+  to edit (or "send right away") → reply spoken chunk by chunk, with a timing line against the ≤ 4 s
+  target. `SPEECH_ENGINE=real`: whisper `base` int8 1.2 s (0.66 s with `language=en`) for 2.4 s of
+  speech, Kokoro fp32 0.6 s for the first chunk. Estimated ~3 s for plain questions, ~4–4.5 s with a
+  tool call (the model's tool call is 2–3 s).
+- Next: Phase 7 Tailscale (phone: HTTPS for mic + push). Midterm video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
 - ~~[C] Edit button on the Memory page. It needs [A] PATCH /api/memory/facts/{id}. Build that
   endpoint here as a stand-in and record it as a contract change.~~ Done Sep 30 (`docs/part-c.md` §7).
-- [C] Phase 5 real voice: faster-whisper + kokoro-onnx in `services/speech`, push-to-talk, spoken replies;
-  measure upload + STT + TTFT + first TTS ≤ 4 s.
+- ~~[C] Phase 5 real voice~~ Done Sep 30. Left: start TTS on the first sentence while the reply is still
+  streaming; a per-device "voice language" choice (auto vs en); record real Chrome + iPhone clips as fixtures.
 - ~~[C] Phase 6 Web Push~~ Done Sep 30 on desktop. Left: test on a phone (after Phase 7); durable
   holds for quiet hours belong in B's job queue (today they're in memory).
 - [C] Phase 7 Tailscale (`serve`, later `funnel`), prod mode, phone install and push test (Android + iPhone).

@@ -5,7 +5,12 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from helpmate.adapters.speech_http import HttpSTT, HttpTTS, SpeechServiceUnavailable
+from helpmate.adapters.speech_http import (
+    HttpSTT,
+    HttpTTS,
+    SpeechInputError,
+    SpeechServiceUnavailable,
+)
 
 
 def _down(request: httpx.Request) -> httpx.Response:
@@ -52,3 +57,12 @@ async def test_http_tts_returns_wav_and_reports_down():
     down = httpx.AsyncClient(transport=httpx.MockTransport(_down), base_url="http://speech")
     with pytest.raises(SpeechServiceUnavailable):
         await HttpTTS(down).speak("hello")
+
+
+async def test_http_stt_passes_on_a_rejected_recording():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"detail": "Couldn't read the recording. Hold the button."})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://speech")
+    with pytest.raises(SpeechInputError, match="Hold the button"):
+        await HttpSTT(client).transcribe(b"\x1aE\xdf\xa3", "audio/webm")
