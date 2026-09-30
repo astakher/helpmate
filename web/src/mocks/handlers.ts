@@ -368,6 +368,14 @@ export const handlers = [
     },
   ),
   http.get("*/api/memory/facts", () => HttpResponse.json(db.facts)),
+  http.patch<{ id: string }, { text: string }>("*/api/memory/facts/:id", async ({ params, request }) => {
+    const fact = db.facts.find((f) => f.id === params.id);
+    if (!fact) return notFound("fact");
+    const text = (await request.json()).text.trim();
+    if (!text) return HttpResponse.json({ detail: "text is empty" }, { status: 422 });
+    fact.text = text;
+    return HttpResponse.json(fact);
+  }),
   http.delete<{ id: string }>("*/api/memory/facts/:id", ({ params }) => {
     const before = db.facts.length;
     db.facts = db.facts.filter((f) => f.id !== params.id);

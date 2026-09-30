@@ -1,5 +1,6 @@
-import { NavLink, Route, Routes } from "react-router";
+import { NavLink, Route, Routes, useLocation } from "react-router";
 import { useHealth, usePendingProposals } from "./api/queries";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
 import { AuthGate } from "./features/auth/AuthGate";
 import { ChatPage } from "./features/chat/ChatPage";
@@ -12,6 +13,7 @@ import { TasksPage } from "./features/tasks/TasksPage";
 import { TodayPage } from "./features/today/TodayPage";
 
 export function App() {
+  const { pathname } = useLocation();
   return (
     <AuthGate>
       <div className="shell">
@@ -26,19 +28,22 @@ export function App() {
           <Nav />
         </header>
         <main id="main" className="main">
-          <Routes>
-            <Route path="/" element={<ChatPage />} />
-            <Route path="/approvals" element={<ApprovalsPage />} />
-            <Route path="/today" element={<TodayPage />} />
-            <Route path="/reminders" element={<TodayPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/folders" element={<FoldersPage />} />
-            <Route path="/folders/:folderId" element={<FolderPage />} />
-            <Route path="/memory" element={<MemoryPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/status" element={<StatusPage />} />
-            <Route path="*" element={<ChatPage />} />
-          </Routes>
+          {/* a page error keeps the nav usable; going to another page clears it */}
+          <ErrorBoundary resetKey={pathname}>
+            <Routes>
+              <Route path="/" element={<ChatPage />} />
+              <Route path="/approvals" element={<ApprovalsPage />} />
+              <Route path="/today" element={<TodayPage />} />
+              <Route path="/reminders" element={<TodayPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/folders" element={<FoldersPage />} />
+              <Route path="/folders/:folderId" element={<FolderPage />} />
+              <Route path="/memory" element={<MemoryPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/status" element={<StatusPage />} />
+              <Route path="*" element={<ChatPage />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </div>
     </AuthGate>

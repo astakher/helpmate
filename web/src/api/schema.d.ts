@@ -321,7 +321,11 @@ export interface paths {
         delete: operations["delete_fact_api_memory_facts__fact_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Fact
+         * @description The owner corrects a remembered fact. A direct edit by the owner, so no approval card.
+         */
+        patch: operations["edit_fact_api_memory_facts__fact_id__patch"];
         trace?: never;
     };
     "/api/export": {
@@ -774,6 +778,14 @@ export interface components {
             chat_messages: components["schemas"]["ChatMessage"][];
             /** Audit */
             audit: components["schemas"]["AuditEntry"][];
+        };
+        /**
+         * FactUpdateIn
+         * @description PATCH /api/memory/facts/{id} (added Sep 30, additive): the owner corrects a fact.
+         */
+        FactUpdateIn: {
+            /** Text */
+            text: string;
         };
         /** FieldDef */
         FieldDef: {
@@ -1940,6 +1952,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_fact_api_memory_facts__fact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFact"];
+                };
             };
             /** @description Validation Error */
             422: {

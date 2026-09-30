@@ -267,6 +267,20 @@ export function useFacts() {
   });
 }
 
+export function useUpdateFact() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async ({ id, text }: { id: string; text: string }) =>
+      unwrap(
+        await api.PATCH("/api/memory/facts/{fact_id}", {
+          params: { path: { fact_id: id } },
+          body: { text },
+        }),
+      ),
+    onSettled: () => invalidate(keys.facts),
+  });
+}
+
 export function useDeleteFact() {
   const invalidate = useInvalidate();
   return useMutation({

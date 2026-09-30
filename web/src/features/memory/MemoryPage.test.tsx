@@ -25,6 +25,28 @@ describe("MemoryPage", () => {
     expect(db.facts).toHaveLength(0);
   });
 
+  it("edits a remembered fact in place, and Cancel keeps the original", async () => {
+    db.facts.push({ id: "f1", text: "my advisor is Dr. Lee", source: "chat:abc", created_at: "2026-09-29T12:00:00Z" });
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<MemoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit: my advisor is Dr. Lee" }));
+    const input = screen.getByLabelText("Edit memory");
+    expect(await axeViolations(container)).toEqual([]);
+    await user.clear(input);
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled(); // empty text can't be saved
+    await user.type(input, "my advisor is Dr. Li{Enter}");
+
+    expect(await screen.findByRole("button", { name: "Edit: my advisor is Dr. Li" })).toBeInTheDocument();
+    expect(db.facts[0].text).toBe("my advisor is Dr. Li");
+
+    await user.click(screen.getByRole("button", { name: "Edit: my advisor is Dr. Li" }));
+    await user.type(screen.getByLabelText("Edit memory"), " (typo)");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Edit: my advisor is Dr. Li" })).toBeInTheDocument();
+    expect(db.facts[0].text).toBe("my advisor is Dr. Li");
+  });
+
   it("discarding a suggestion stores nothing", async () => {
     db.suggestions.push({ id: "s2", text: "I like tea", source: "chat:abc", status: "pending", created_at: "2026-09-29T12:00:00Z" });
     const user = userEvent.setup();

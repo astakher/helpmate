@@ -92,14 +92,15 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
-- [C] Edit button on the Memory page. It needs [A] PATCH /api/memory/facts/{id}. Build that endpoint
-  here as a stand-in and record it as a contract change.
+- ~~[C] Edit button on the Memory page. It needs [A] PATCH /api/memory/facts/{id}. Build that
+  endpoint here as a stand-in and record it as a contract change.~~ Done Sep 30 (`docs/part-c.md` §7).
 - [C] Phase 5 real voice: faster-whisper + kokoro-onnx in `services/speech`, push-to-talk, spoken replies;
   measure upload + STT + TTFT + first TTS ≤ 4 s.
 - [C] Phase 6 Web Push: `webpush_notifier.py`, `quiet_hours.py`, VAPID keys, "Enable notifications",
   service-worker ack; add the `WebPushNotifier` factory to `tests/contracts/test_notifier.py`.
 - [C] Phase 7 Tailscale (`serve`, later `funnel`), prod mode, phone install and push test (Android + iPhone).
-- [C] Add a React error boundary so a render error shows a message, not a blank page.
+- ~~[C] Add a React error boundary so a render error shows a message, not a blank page.~~ Done Sep 30
+  (`web/src/ErrorBoundary.tsx`: around the pages, reset on navigation, and around the whole app).
 - [C] Energy per request: `nvidia-smi` power is N/A on the 1050 Ti Max-Q; plan a wall-meter/HWiNFO or
   demo-host measurement.
 - [C] Phase 8: Playwright E2E (chat → approve → reminder → push ack) + DST test across Nov 1.
@@ -109,5 +110,5 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   (Done as stand-ins: benchmark `rem-at` fix, thinking-model TTFT, held-out set, `--pipeline`.)
 - [A] (stand-in) "permitted" permission tier (empty by default); calendar conflict/free-time tools;
   golden set ≥ 60, recall@5, 10 prompt-injection cases.
-- [B] (stand-in) `SettingsRepo` case in `tests/contracts/test_repositories.py`; read-only
-  Gmail/Calendar by project week 4.
+- [B] Postgres repos must pass `tests/contracts/test_repositories.py` (now incl. settings and
+  `update_fact`); read-only Gmail/Calendar by project week 4.

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from helpmate.api.deps import ContainerDep, current_user
-from helpmate.api.schemas.bodies import ExportOut, SuggestionDecisionIn
+from helpmate.api.schemas.bodies import ExportOut, FactUpdateIn, SuggestionDecisionIn
 from helpmate.domain.models import (
     MemoryFact,
     MemorySuggestion,
@@ -51,6 +51,22 @@ async def decide_suggestion(
 @router.get("/memory/facts", response_model=list[MemoryFact])
 async def list_facts(container: ContainerDep) -> list[MemoryFact]:
     return await container.repos.memory.find_facts()
+
+
+# Stand-in for Workstream A - not part of the Part C deliverable (A owns memory; Part C's Memory
+# page Edit button needs it). Recorded in docs/part-c.md §7.
+@router.patch("/memory/facts/{fact_id}", response_model=MemoryFact)
+async def edit_fact(fact_id: str, body: FactUpdateIn, container: ContainerDep) -> MemoryFact:
+    """The owner corrects a remembered fact. A direct edit by the owner, so no approval card."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "text is empty")
+    fact = next((f for f in await container.repos.memory.find_facts() if f.id == fact_id), None)
+    if fact is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "fact not found")
+    updated = fact.model_copy(update={"text": text})
+    await container.repos.memory.update_fact(updated)
+    return updated
 
 
 @router.delete("/memory/facts/{fact_id}", status_code=status.HTTP_204_NO_CONTENT)

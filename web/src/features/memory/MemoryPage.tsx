@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { fetchExport, useDecideSuggestion, useDeleteFact, useFacts, useSuggestions } from "../../api/queries";
+import {
+  fetchExport,
+  useDecideSuggestion,
+  useDeleteFact,
+  useFacts,
+  useSuggestions,
+  useUpdateFact,
+} from "../../api/queries";
 import type { MemoryFact } from "../../api/types";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -71,7 +78,8 @@ export function MemoryPage() {
 
 function FactRow({ fact }: { fact: MemoryFact }) {
   const remove = useDeleteFact();
-  const [confirming, setConfirming] = useState(false);
+  const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
+  if (mode === "edit") return <FactEditor fact={fact} onDone={() => setMode("view")} />;
   return (
     <li className="list__row">
       <span>
@@ -81,24 +89,76 @@ function FactRow({ fact }: { fact: MemoryFact }) {
           · from {describeSource(fact.source)}, {when.format(new Date(fact.created_at))}
         </span>
       </span>
-      {confirming ? (
+      {mode === "confirm" ? (
         <span className="row">
           <button type="button" className="btn btn--small btn--danger" onClick={() => remove.mutate(fact.id)}>
             Forget it
           </button>
-          <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
+          <button type="button" className="btn btn--small" onClick={() => setMode("view")}>
             Keep
           </button>
         </span>
       ) : (
-        <button
-          type="button"
-          className="btn btn--small"
-          aria-label={`Forget: ${fact.text}`}
-          onClick={() => setConfirming(true)}
-        >
-          Forget
+        <span className="row">
+          <button
+            type="button"
+            className="btn btn--small"
+            aria-label={`Edit: ${fact.text}`}
+            onClick={() => setMode("edit")}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="btn btn--small"
+            aria-label={`Forget: ${fact.text}`}
+            onClick={() => setMode("confirm")}
+          >
+            Forget
+          </button>
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** Correct a remembered fact in place. A direct edit by the owner, so no approval card. */
+function FactEditor({ fact, onDone }: { fact: MemoryFact; onDone: () => void }) {
+  const update = useUpdateFact();
+  const [draft, setDraft] = useState(fact.text);
+  const inputId = `fact-edit-${fact.id}`;
+  const text = draft.trim();
+  return (
+    <li className="list__row">
+      <form
+        className="row fact-edit"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (text) update.mutate({ id: fact.id, text }, { onSuccess: onDone });
+        }}
+      >
+        <label htmlFor={inputId} className="visually-hidden">
+          Edit memory
+        </label>
+        <input
+          id={inputId}
+          value={draft}
+          maxLength={500}
+          required
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => event.key === "Escape" && onDone()}
+        />
+        <button type="submit" className="btn btn--small btn--primary" disabled={!text || update.isPending}>
+          Save
         </button>
+        <button type="button" className="btn btn--small" onClick={onDone}>
+          Cancel
+        </button>
+      </form>
+      {update.isError && (
+        <p className="error" role="alert">
+          Couldn't save that change. Please try again.
+        </p>
       )}
     </li>
   );

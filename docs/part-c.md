@@ -84,8 +84,8 @@ seams are still fake (from `GET /api/health`).
 
 - Postgres implementations of `PushSubscriptionRepo` (`upsert`, `remove`, `find`), `DeliveryRepo`
   (`record`, `ack`, `find`) and `SettingsRepo` (`get/put_notification_settings`). They must pass
-  `tests/contracts/test_repositories.py`. That suite covers push subscriptions and deliveries today.
-  `SettingsRepo` has no case yet, so B should add one: defaults returned before any `put`, then a round trip.
+  `tests/contracts/test_repositories.py`, which covers push subscriptions, deliveries,
+  notification settings (defaults, then a round trip) and memory-fact updates.
 - The scheduler calls `NotifierPort.notify()` when a reminder is due, and records a `Delivery`
   (`due_at`, `sent_at`) so `/push/ack` can compute latency. The worker never knows about Web Push.
 - `AuthPort` behind `current_user`: session cookie `helpmate_session`, `SameSite=Strict`, HttpOnly.
@@ -94,7 +94,7 @@ seams are still fake (from `GET /api/health`).
 
 | Owner | Endpoints |
 |---|---|
-| A (agent, tools, memory) | `POST /chat/sessions`, `POST /chat/sessions/{id}/messages` (SSE `ChatEvent` stream), `GET /proposals`, `GET /proposals/{id}`, `POST /proposals/{id}/decision`, `GET /tools`, `GET /memory/suggestions`, `POST /memory/suggestions/{id}/decision`, `GET /memory/facts`, `DELETE /memory/facts/{id}` |
+| A (agent, tools, memory) | `POST /chat/sessions`, `POST /chat/sessions/{id}/messages` (SSE `ChatEvent` stream), `GET /proposals`, `GET /proposals/{id}`, `POST /proposals/{id}/decision`, `GET /tools`, `GET /memory/suggestions`, `POST /memory/suggestions/{id}/decision`, `GET /memory/facts`, `PATCH /memory/facts/{id}`, `DELETE /memory/facts/{id}` |
 | B (data, auth) | `GET/POST /folders`, `GET/POST /folders/{id}/items`, `GET/POST /tasks`, `PATCH /tasks/{id}`, `GET /reminders`, `POST /reminders/{id}/cancel`, `GET /today`, `GET /export`, `POST /auth/login`, `POST /auth/mfa`, `POST /auth/mfa/enroll`, `POST /auth/logout`, `GET /me` |
 | shared | `GET /health` (adapter name + `fake` flag per seam) |
 | C | the voice, push and settings endpoints in §3 |
@@ -160,6 +160,4 @@ v0.1 = `contracts/openapi.yaml` as committed in `8d5f957`. Every change since mu
 |---|---|---|---|---|
 | Sep 2026 (Phase 4, `4d88ea0`) | `GET /api/tools` → `list[ToolInfo]` `{name, description, read_only, risk, parameters}` | additive endpoint + schema | the Edit-then-approve form is built from each tool's JSON Schema | A (stand-in here) |
 | Sep 30 2026 | `LLMPort.chat(..., json_schema=None)` in `domain/ports.py`: optional structured output | additive port parameter (no HTTP change) | the agent loop's routing step classifies messages with no tools attached | A (stand-in here) |
-
-Planned (not built yet): `PATCH /api/memory/facts/{id}` `{text}` → `MemoryFact`, plus
-`MemoryRepo.update_fact`, for the Memory page's Edit button (see the backlog in `CLAUDE.md`).
+| Sep 30 2026 | `PATCH /api/memory/facts/{fact_id}` `FactUpdateIn {text}` → `MemoryFact` (404 unknown id, 422 empty text); `MemoryRepo.update_fact(fact) -> bool` | additive endpoint + schema + repo method | the Memory page's Edit button ("view, **edit**, export and delete everything HelpMate remembers") | A endpoint (stand-in here), B implements `update_fact` in Postgres (the contract suite now covers it) |

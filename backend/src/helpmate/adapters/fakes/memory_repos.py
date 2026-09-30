@@ -188,6 +188,12 @@ class InMemoryMemoryRepo:
     async def find_facts(self) -> list[MemoryFact]:
         return sorted(self._facts.values(), key=lambda f: f.created_at, reverse=True)
 
+    async def update_fact(self, fact: MemoryFact) -> bool:
+        if self._facts.get(fact.id) is None:
+            return False
+        self._facts.put(fact.id, fact)
+        return True
+
     async def delete_fact(self, fact_id: str) -> bool:
         return self._facts.pop(fact_id)
 

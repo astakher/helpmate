@@ -232,7 +232,7 @@ Tags: **[A]** / **[B]** / **[C]** = owning workstream, **[Spec]** = the submitte
 6. **[A]** Evaluation targets aren't tracked: a golden set of ≥ 60 prompts (we have 15, so one miss moves a score by 6.7 points), retrieval recall@5 ≥ 0.8 on seeded data, 10 prompt-injection cases. Fix: grow `golden_seed.jsonl` and add recall and injection suites to eval-in-CI (week 9).
 7. **[Spec]** "Two weeks of daily use by the team" isn't in the timeline. Fix: schedule it for project weeks 6–8, after feature freeze.
 8. **[C]** "Energy per request" has no measurement plan, and `nvidia-smi` reports power as N/A on the 1050 Ti Max-Q. Fix: measure on the demo host, or with a wall-plug meter or HWiNFO on the XPS, and compare `KEEP_ALIVE` 30m vs 5m.
-9. **[A]** Memory facts can be viewed, deleted and exported, but not **edited**, which the original spec promises. Fix: additive `PATCH /api/memory/facts/{id}` + `MemoryRepo.update_fact`. **[C]** then adds the Edit button (see the CLAUDE.md backlog).
+9. **[A]** Memory facts can be viewed, deleted and exported, but not **edited**, which the original spec promises. **Done Sep 30:** additive `PATCH /api/memory/facts/{id}` + `MemoryRepo.update_fact` (stand-in for A; B's Postgres repo must pass the new contract case) and **[C]** the Edit button on the Memory page.
 10. **[Spec]** The course's *design documentation template* (midterm) and *final project requirements* document aren't in the repo or the spec folder. Fix: download them from Avenue before course week 8.
 
 **Minor**

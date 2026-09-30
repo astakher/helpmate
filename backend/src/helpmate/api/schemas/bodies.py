@@ -136,6 +136,12 @@ class SuggestionDecisionIn(Body):
     decision: Literal["approve", "reject"]
 
 
+class FactUpdateIn(Body):
+    """PATCH /api/memory/facts/{id} (added Sep 30, additive): the owner corrects a fact."""
+
+    text: str = Field(min_length=1, max_length=500)
+
+
 class ExportOut(Body):
     exported_at: AwareDatetime
     folders: list[Folder]

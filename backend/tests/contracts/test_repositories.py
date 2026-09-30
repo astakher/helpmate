@@ -16,7 +16,9 @@ from helpmate.domain.models import (
     Actor,
     AuditEntry,
     Delivery,
+    MemoryFact,
     NotificationKind,
+    NotificationSettings,
     Proposal,
     ProposalStatus,
     PushKeys,
@@ -112,3 +114,22 @@ async def test_audit_is_newest_first_and_limited(repos):
             AuditEntry(id=str(i), at=NOW + timedelta(seconds=i), actor=Actor.SYSTEM, action="x")
         )
     assert [e.id for e in await repos.audit.find(limit=2)] == ["4", "3"]
+
+
+async def test_memory_facts_update_and_delete(repos):
+    fact = MemoryFact(id="f1", text="my advisor is Dr. Lee", source="chat:s1", created_at=NOW)
+    await repos.memory.add_fact(fact)
+    assert await repos.memory.update_fact(fact.model_copy(update={"text": "advisor: Dr. Li"}))
+    [stored] = await repos.memory.find_facts()
+    assert stored.text == "advisor: Dr. Li" and stored.source == "chat:s1"
+    missing = fact.model_copy(update={"id": "nope"})
+    assert not await repos.memory.update_fact(missing)
+    assert await repos.memory.find_facts() == [stored]  # an update never inserts
+    assert await repos.memory.delete_fact("f1") and not await repos.memory.delete_fact("f1")
+
+
+async def test_notification_settings_default_then_round_trip(repos):
+    assert await repos.settings.get_notification_settings() == NotificationSettings()
+    changed = NotificationSettings(max_per_hour=2, private_previews=True)
+    await repos.settings.put_notification_settings(changed)
+    assert await repos.settings.get_notification_settings() == changed
