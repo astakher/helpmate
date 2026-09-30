@@ -19,7 +19,9 @@ from helpmate.adapters.fakes.fake_speech import FakeSTT, FakeTTS
 from helpmate.adapters.fakes.log_notifier import LogNotifier
 from helpmate.adapters.fakes.memory_repos import InMemoryRepositories
 from helpmate.adapters.fakes.scripted_agent import ScriptedAgent
+from helpmate.adapters.quiet_hours import QuietHoursNotifier
 from helpmate.adapters.speech_http import HttpSTT, HttpTTS
+from helpmate.adapters.webpush_notifier import WebPushNotifier
 from helpmate.agent.policy import PolicyEngine
 from helpmate.agent.tools import ToolDeps, ToolRegistry, default_registry
 from helpmate.domain.ports import (
@@ -98,6 +100,8 @@ class Container:
 
     async def shutdown(self) -> None:
         await self.scheduler.stop()
+        if (close := getattr(self.notifier, "aclose", None)) is not None:
+            await close()  # e.g. QuietHoursNotifier's release timer
         for client in self._http_clients:
             await client.aclose()
 
@@ -130,7 +134,13 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     if settings.notifier == "log":
         notifier = LogNotifier()
     else:
-        _not_yet("notifier", settings.notifier)
+        webpush = WebPushNotifier(
+            repos.push_subscriptions,
+            settings.vapid_private_key.get_secret_value(),
+            settings.vapid_subject,
+            settings.push_ttl_seconds,
+        )
+        notifier = QuietHoursNotifier(webpush, repos.settings, clock)
 
     # --- Scheduler (B) ---
     scheduler: SchedulerPort

@@ -24,12 +24,20 @@ def test_openapi_publishes_the_chat_event_union():
 
 @pytest.mark.parametrize(
     ("seam", "choice", "owner"),
-    [("repo", "postgres", "B"), ("auth", "totp", "B"), ("notifier", "webpush", "C")],
+    [("repo", "postgres", "B"), ("auth", "totp", "B"), ("scheduler", "pg", "B")],
 )
 def test_unimplemented_adapters_fail_loudly(seam, choice, owner):
     settings = Settings(_env_file=None, **{seam: choice})
     with pytest.raises(AdapterNotImplemented, match=f"Workstream {owner}"):
         build_container(settings)
+
+
+def test_webpush_needs_vapid_keys_and_then_builds():
+    with pytest.raises(ValueError, match="gen_vapid.py"):
+        build_container(Settings(_env_file=None, notifier="webpush"))
+    settings = Settings(_env_file=None, notifier="webpush", vapid_private_key="x" * 43)
+    notifier = build_container(settings).notifier
+    assert notifier.name == "webpush+quiet-hours" and not notifier.is_fake
 
 
 def test_loop_agent_is_available():  # stand-in for Workstream A's agent loop

@@ -88,7 +88,11 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   `resolve()` + retry once → `PolicyEngine` (cards as before); plain replies use `reply_prompt()`
   with recent history. Live on the XPS: small talk ≈ 1 s, list ≈ 1.2 s, a reminder card ≈ 2–3 s
   (mostly ~40 tokens of tool-call JSON at 24 tok/s). `scripted` stays the default in `.env.example`.
-- Next: Phase 5 real voice → Phase 6 Web Push → Phase 7 Tailscale. Midterm video ≈ Oct 26.
+- **Phase 6 Web Push works on desktop Chrome** (Sep 30): `HELPMATE_NOTIFIER=webpush` =
+  `QuietHoursNotifier(WebPushNotifier)`; Settings → Enable / Send test (shows latency). Measured:
+  test push and a model-created reminder both **~1 s from due to shown** (target ≤ 60 s). Needs
+  `./scripts/dev.ps1 -Prod` (:8000). Phone push needs Phase 7 (HTTPS via Tailscale).
+- Next: Phase 5 real voice → Phase 7 Tailscale (phone). Midterm video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
@@ -96,8 +100,8 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   endpoint here as a stand-in and record it as a contract change.~~ Done Sep 30 (`docs/part-c.md` §7).
 - [C] Phase 5 real voice: faster-whisper + kokoro-onnx in `services/speech`, push-to-talk, spoken replies;
   measure upload + STT + TTFT + first TTS ≤ 4 s.
-- [C] Phase 6 Web Push: `webpush_notifier.py`, `quiet_hours.py`, VAPID keys, "Enable notifications",
-  service-worker ack; add the `WebPushNotifier` factory to `tests/contracts/test_notifier.py`.
+- ~~[C] Phase 6 Web Push~~ Done Sep 30 on desktop. Left: test on a phone (after Phase 7); durable
+  holds for quiet hours belong in B's job queue (today they're in memory).
 - [C] Phase 7 Tailscale (`serve`, later `funnel`), prod mode, phone install and push test (Android + iPhone).
 - ~~[C] Add a React error boundary so a render error shows a message, not a blank page.~~ Done Sep 30
   (`web/src/ErrorBoundary.tsx`: around the pages, reset on navigation, and around the whole app).

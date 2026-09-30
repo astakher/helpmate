@@ -4,6 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type {
   ChatEvent,
+  Delivery,
   Folder,
   HealthOut,
   Item,
@@ -12,11 +13,16 @@ import type {
   NotificationSettings,
   Proposal,
   Reminder,
+  SubscriptionIn,
   Task,
   TodayOut,
   ToolInfo,
   User,
 } from "../api/types";
+
+/** A syntactically valid VAPID public key (base64url P-256 point) for the mocks. */
+export const MOCK_VAPID_KEY =
+  "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
 
 type Db = {
   proposals: Proposal[];
@@ -28,6 +34,9 @@ type Db = {
   facts: MemoryFact[];
   settings: NotificationSettings;
   auth: { signedIn: boolean; mfaRequired: boolean };
+  vapidKey: string | null;
+  subscriptions: SubscriptionIn[];
+  deliveries: Delivery[];
 };
 
 export const db: Db = fresh();
@@ -67,6 +76,9 @@ function fresh(): Db {
     facts: [],
     settings: { quiet_hours: null, timezone: "America/Toronto", max_per_hour: 6, private_previews: false },
     auth: { signedIn: true, mfaRequired: true },
+    vapidKey: MOCK_VAPID_KEY,
+    subscriptions: [],
+    deliveries: [],
   };
 }
 
@@ -398,6 +410,26 @@ export const handlers = [
   ),
 
   // --- settings ---
+  http.get("*/api/push/vapid-public-key", () => HttpResponse.json({ public_key: db.vapidKey })),
+  http.post<never, SubscriptionIn>("*/api/push/subscriptions", async ({ request }) => {
+    const subscription = await request.json();
+    db.subscriptions = [...db.subscriptions.filter((s) => s.endpoint !== subscription.endpoint), subscription];
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete<never, { endpoint: string }>("*/api/push/subscriptions", async ({ request }) => {
+    const { endpoint } = await request.json();
+    db.subscriptions = db.subscriptions.filter((s) => s.endpoint !== endpoint);
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post("*/api/push/test", () => {
+    const id = newId();
+    const now = nowIso();
+    const devices = db.subscriptions.length;
+    // the mock "device" acks at once, as the service worker would
+    db.deliveries.unshift({ notification_id: id, kind: "test", due_at: now, sent_at: now, received_at: devices ? now : null });
+    return HttpResponse.json({ notification_id: id, delivered: devices, deferred: false, detail: `${devices}/${devices} devices` });
+  }),
+  http.get("*/api/push/deliveries", () => HttpResponse.json(db.deliveries)),
   http.get("*/api/settings/notifications", () => HttpResponse.json(db.settings)),
   http.put<never, NotificationSettings>("*/api/settings/notifications", async ({ request }) => {
     db.settings = await request.json();

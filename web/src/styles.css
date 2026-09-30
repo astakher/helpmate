@@ -734,3 +734,20 @@ input[type="radio"] {
   flex: 1;
   min-width: 12rem;
 }
+
+.push-setup h3 {
+  margin-top: 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.badge--ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}

@@ -31,14 +31,17 @@ Only Part C moves across, and it has to plug in **without changes**.
 | `web/` | React 19 + TS + Vite PWA: chat, approvals, today, tasks, folders, memory, settings, login/2FA, system status, service worker (`src/sw.ts`) | built (Phase 4) |
 | `services/speech/` | Speech service on `127.0.0.1:8001`: `POST /transcribe`, `POST /speak`, `GET /health`. Own uv env. | fake engine; real faster-whisper + Kokoro in Phase 5 |
 | `backend/src/helpmate/adapters/speech_http.py` | `HttpSTT`, `HttpTTS`: call the speech service over loopback | built |
-| `backend/src/helpmate/adapters/webpush_notifier.py` | `WebPushNotifier` (pywebpush, VAPID, TTL, 404/410 pruning) | Phase 6 |
-| `backend/src/helpmate/adapters/quiet_hours.py` | `QuietHoursNotifier` decorator (quiet hours, `max_per_hour`, private previews) | Phase 6 |
+| `backend/src/helpmate/adapters/webpush_notifier.py` | `WebPushNotifier` (pywebpush `webpush_async`, VAPID, TTL, `Urgency`, 404/410 pruning) | built (Phase 6); desktop Chrome measured ~1 s due → shown |
+| `backend/src/helpmate/adapters/quiet_hours.py` | `QuietHoursNotifier` decorator (quiet hours, `max_per_hour`, private previews; holds in memory) | built (Phase 6) |
+| `scripts/gen_vapid.py` | generates the VAPID key pair (`--write` fills `.env`) | built |
 | `backend/src/helpmate/api/routes/voice.py` | `/api/voice/*` | built |
 | `backend/src/helpmate/api/routes/push.py` | `/api/push/*` | built |
 | `backend/src/helpmate/api/routes/settings.py` | `/api/settings/notifications` | built |
 | `backend/tests/test_voice_and_push.py` | route tests (voice, push, settings) | built |
 | `backend/tests/test_speech_http.py` | `HttpSTT` / `HttpTTS` against mocked HTTP | built |
-| `backend/tests/contracts/test_notifier.py` | shared `NotifierPort` suite; C adds the `WebPushNotifier` factory in Phase 6 | built (fake only) |
+| `backend/tests/test_webpush.py` | payload/headers/pruning with a fake push service, plus real pywebpush signing offline (`curl=True`) | built |
+| `backend/tests/test_quiet_hours.py` | quiet hours (incl. past midnight), max per hour, private previews | built |
+| `backend/tests/contracts/test_notifier.py` | shared `NotifierPort` suite, run against `log`, `webpush` and `webpush+quiet-hours` | built |
 | `backend/tests/test_part_c_boundary.py` | import-boundary check (rule 2) | built |
 
 ## 3. What Part C provides
@@ -112,20 +115,25 @@ seams are still fake (from `GET /api/health`).
 4. **Wire the container.** In `container.py`:
    - speech: if `settings.stt`/`settings.tts == "http"`, build one `httpx.AsyncClient(base_url=settings.speech_url)`
      and pass it to `HttpSTT` / `HttpTTS`; otherwise use the fakes
-   - notifier: if `settings.notifier == "webpush"`, wrap `WebPushNotifier` in the `QuietHoursNotifier`
-     decorator (planned shape: `QuietHoursNotifier(WebPushNotifier(settings, repos.push_subscriptions),
-     repos.settings, clock)`; the exact signature is set in Phase 6); otherwise `LogNotifier`
-   - close the HTTP clients on shutdown
+   - notifier: if `settings.notifier == "webpush"`:
+     `QuietHoursNotifier(WebPushNotifier(repos.push_subscriptions, settings.vapid_private_key.get_secret_value(),
+     settings.vapid_subject, settings.push_ttl_seconds), repos.settings, clock)`; otherwise `LogNotifier`
+   - on shutdown, close the HTTP clients and call the notifier's `aclose()` if it has one (the
+     quiet-hours release timer)
+   - add `pywebpush>=2.0` to the backend's dependencies
 5. **Regenerate the contract:** `cd backend; uv run python ../scripts/export_openapi.py`, then
    `cd web; npm run gen:api`. Both files must match what's committed (CI checks for drift).
 6. **CI:** keep three jobs, as in this repo's `.github/workflows/ci.yml`: backend (ruff, pytest, OpenAPI
    drift; this includes the boundary test), speech (ruff, pytest) and web (npm ci, types drift, lint,
    typecheck, test, build). Node 22, Python 3.12, `astral-sh/setup-uv@v10.2.0`.
 7. **Config:** copy the C rows from `.env.example` (`HELPMATE_STT/TTS/NOTIFIER`, `HELPMATE_SPEECH_URL`,
-   `SPEECH_*`, `HELPMATE_VAPID_*`, `HELPMATE_PUSH_TTL_SECONDS`). Generate VAPID keys **once** and use the
-   same keys on every host, or phones must re-subscribe.
-8. **Verify:** run §6, then `./scripts/dev.ps1` and check that the System status page shows
-   `stt/tts/notifier` flipping from FAKE when you change the switches.
+   `SPEECH_*`, `HELPMATE_VAPID_*`, `HELPMATE_PUSH_TTL_SECONDS`). Generate VAPID keys **once**
+   (`cd backend; uv run python ../scripts/gen_vapid.py --write`) and use the same keys on every host,
+   or phones must re-subscribe.
+8. **Verify:** run §6, then `./scripts/dev.ps1 -Prod`, open `http://127.0.0.1:8000/settings`,
+   Enable notifications → Send a test notification (the card reports the latency), and check that
+   the System status page shows `stt/tts/notifier` flipping from FAKE when you change the switches.
+   Push needs the production build: the dev server (:5173) has no service worker.
 
 ## 6. Running Part C's tests on their own (fakes only)
 
@@ -134,7 +142,7 @@ No GPU, Ollama, Postgres or network needed.
 ```powershell
 # backend: Part C routes and adapters, the NotifierPort contract suite, and the boundary check
 cd backend
-uv run pytest -q tests/test_voice_and_push.py tests/test_speech_http.py tests/contracts/test_notifier.py tests/test_part_c_boundary.py
+uv run pytest -q tests/test_voice_and_push.py tests/test_speech_http.py tests/test_webpush.py tests/test_quiet_hours.py tests/contracts/test_notifier.py tests/test_part_c_boundary.py
 
 # speech service (fake engine)
 cd services/speech

@@ -34,16 +34,13 @@ PART_C_MODULES = (
 PART_C_TESTS = (
     "tests/test_voice_and_push.py",
     "tests/test_speech_http.py",
+    "tests/test_webpush.py",
+    "tests/test_quiet_hours.py",
     "tests/contracts/test_notifier.py",
     "tests/test_part_c_boundary.py",
 )
 # Written already; the scan must never silently cover fewer than these.
-EXISTING_NOW = {
-    "helpmate.adapters.speech_http",
-    "helpmate.api.routes.voice",
-    "helpmate.api.routes.push",
-    "helpmate.api.routes.settings",
-}
+EXISTING_NOW = set(PART_C_MODULES)
 
 ALLOWED = (
     "helpmate.domain",

@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { api, ApiError, unwrap } from "./client";
-import type { Decision, FieldDef, Horizon, NotificationSettings, Proposal, Task } from "./types";
+import type {
+  Decision,
+  FieldDef,
+  Horizon,
+  NotificationSettings,
+  Proposal,
+  SubscriptionIn,
+  Task,
+} from "./types";
 
 export const keys = {
   health: ["health"] as const,
@@ -310,4 +318,30 @@ export function useSaveNotificationSettings() {
       unwrap(await api.PUT("/api/settings/notifications", { body })),
     onSettled: () => invalidate(keys.notificationSettings),
   });
+}
+
+// --- Web Push (Part C) ---
+
+export function useVapidKey() {
+  return useQuery({
+    queryKey: ["push", "vapid-public-key"],
+    queryFn: async () => unwrap(await api.GET("/api/push/vapid-public-key")).public_key ?? null,
+    staleTime: Infinity,
+  });
+}
+
+export async function saveSubscription(body: SubscriptionIn) {
+  unwrap(await api.POST("/api/push/subscriptions", { body }));
+}
+
+export async function removeSubscription(endpoint: string) {
+  unwrap(await api.DELETE("/api/push/subscriptions", { body: { endpoint } }));
+}
+
+export async function sendTestPush() {
+  return unwrap(await api.POST("/api/push/test"));
+}
+
+export async function fetchDeliveries() {
+  return unwrap(await api.GET("/api/push/deliveries"));
 }

@@ -107,7 +107,7 @@ To use real components, edit `.env`, one seam at a time:
 | Ollama | `HELPMATE_LLM=ollama` | step 2 |
 | Real speech | `HELPMATE_STT=http`, `HELPMATE_TTS=http`, `SPEECH_ENGINE=real` | `./scripts/get_models.ps1` (downloads the Kokoro model, ~140 MB; the Whisper model downloads on first use) |
 | Postgres | `HELPMATE_REPO=postgres` | `docker compose -f infra/docker-compose.yml up -d` |
-| Web Push | `HELPMATE_NOTIFIER=webpush` + VAPID keys | `uv run python scripts/gen_vapid.py` (once; share the same keys across hosts) |
+| Web Push | `HELPMATE_NOTIFIER=webpush` + VAPID keys | `cd backend; uv run python ../scripts/gen_vapid.py --write` (once; share the same keys across hosts). Then `./scripts/dev.ps1 -Prod`, open `http://127.0.0.1:8000/settings` → **Enable notifications** → **Send a test notification**. Not on :5173: the dev server has no service worker. |
 
 ## 5. Phone access with Tailscale (week 4)
 
@@ -130,6 +130,11 @@ To use real components, edit `.env`, one seam at a time:
 - **Settings in `server.log` show defaults (`OLLAMA_CONTEXT_LENGTH:0`, `KEEP_ALIVE:5m0s`):** Ollama was started
   from a process that was running before `setx`. Quit it from the tray and start it from the Start menu.
 - **`gh`, `node` or `uv` "not recognized" right after installing:** open a new terminal (PATH is only read at start).
+- **Test push says "sent" but nothing pops up:** Windows Settings → System → Notifications: notifications on,
+  **Google Chrome** allowed, Do not disturb off. If the card says *blocked*, allow Notifications for the site
+  (icon left of the address bar) and reload.
+- **Push worked, then stopped after restarting the API:** the testbed keeps subscriptions in memory. Open
+  Settings once; the page re-registers this browser automatically.
 - **Docker ports reachable from the LAN:** every port in `infra/docker-compose.yml` must be written `127.0.0.1:<port>:<port>`.
 - **Timezone errors in tests:** make sure `tzdata` is installed (`uv sync` handles it). Windows has no system timezone database.
 - **Shell script fails with `\r` in a container:** `.gitattributes` forces LF. Run `git add --renormalize .` once.

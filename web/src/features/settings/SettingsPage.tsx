@@ -3,6 +3,7 @@ import { useLogout, useMe, useNotificationSettings, useSaveNotificationSettings 
 import type { NotificationSettings } from "../../api/types";
 import { InstallApp } from "./InstallApp";
 import { MfaSetup } from "./MfaSetup";
+import { PushSetup } from "./PushSetup";
 
 export function SettingsPage() {
   const me = useMe();
@@ -28,6 +29,7 @@ export function SettingsPage() {
       </div>
 
       <h2>Notifications</h2>
+      <PushSetup />
       <NotificationSettingsForm />
 
       <h2>Install</h2>
