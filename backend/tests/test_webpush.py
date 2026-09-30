@@ -97,9 +97,11 @@ def test_missing_vapid_key_explains_the_fix():
         WebPushNotifier(InMemoryPushSubscriptionRepo(), "", "mailto:x@example.com")
 
 
-async def test_real_pywebpush_accepts_keys_from_gen_vapid_offline():
+async def test_real_pywebpush_accepts_keys_from_gen_vapid_offline(tmp_path, monkeypatch):
     """The key format scripts/gen_vapid.py writes is what pywebpush signs with. curl=True builds
-    the exact request without sending it, so this runs offline in CI."""
+    the exact request without sending it, so this runs offline in CI. (It also writes the body to
+    ./encrypted.data, hence the temporary working directory.)"""
+    monkeypatch.chdir(tmp_path)
     import base64
     import os
     import runpy
