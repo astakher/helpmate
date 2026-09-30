@@ -151,6 +151,11 @@ class AuthPort(Adapter, Protocol):
         """Returns an otpauth:// URI for the authenticator-app QR code."""
         ...
 
+    async def confirm_mfa(self, code: str) -> bool:
+        """Finish enrolment (added Sep 30, additive): True if `code` matches the secret from
+        enroll_mfa, and from then on login asks for a code (User.mfa_enabled)."""
+        ...
+
     async def logout(self, session_token: str | None) -> None: ...
 
 

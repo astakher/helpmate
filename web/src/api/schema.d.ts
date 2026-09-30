@@ -554,6 +554,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/mfa/enroll/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Mfa
+         * @description Finish enrolment with the first code from the authenticator app. Until this succeeds,
+         *     two-step verification is NOT on (a scanned QR code alone changes nothing).
+         */
+        post: operations["confirm_mfa_api_auth_mfa_enroll_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -921,6 +942,14 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * MfaConfirmIn
+         * @description POST /api/auth/mfa/enroll/confirm (added Sep 30, additive): the first code from the app.
+         */
+        MfaConfirmIn: {
+            /** Code */
+            code: string;
         };
         /** MfaEnrollOut */
         MfaEnrollOut: {
@@ -2408,6 +2437,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MfaEnrollOut"];
+                };
+            };
+            /** @description the dev login can't enable two-step verification */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    confirm_mfa_api_auth_mfa_enroll_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MfaConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description the code doesn't match */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description the dev login can't enable two-step verification */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

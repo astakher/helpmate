@@ -947,6 +947,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MfaEnrollOut'
+        '409':
+          description: the dev login can't enable two-step verification
+  /api/auth/mfa/enroll/confirm:
+    post:
+      tags:
+      - auth
+      summary: Confirm Mfa
+      description: 'Finish enrolment with the first code from the authenticator app. Until this succeeds,
+
+        two-step verification is NOT on (a scanned QR code alone changes nothing).'
+      operationId: confirm_mfa_api_auth_mfa_enroll_confirm_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MfaConfirmIn'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '400':
+          description: the code doesn't match
+        '409':
+          description: the dev login can't enable two-step verification
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/auth/logout:
     post:
       tags:
@@ -1545,6 +1575,19 @@ components:
       - created_at
       title: MemorySuggestion
       description: A fact the agent noticed. Stored as a MemoryFact only if the owner approves it.
+    MfaConfirmIn:
+      properties:
+        code:
+          type: string
+          pattern: ^\d{6}$
+          title: Code
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      title: MfaConfirmIn
+      description: 'POST /api/auth/mfa/enroll/confirm (added Sep 30, additive): the first code from the
+        app.'
     MfaEnrollOut:
       properties:
         otpauth_uri:

@@ -33,7 +33,7 @@ type Db = {
   suggestions: MemorySuggestion[];
   facts: MemoryFact[];
   settings: NotificationSettings;
-  auth: { signedIn: boolean; mfaRequired: boolean };
+  auth: { signedIn: boolean; mfaRequired: boolean; real: boolean; mfaEnabled: boolean }; // real = a non-fake auth adapter
   vapidKey: string | null;
   subscriptions: SubscriptionIn[];
   deliveries: Delivery[];
@@ -78,7 +78,7 @@ function fresh(): Db {
     suggestions: [],
     facts: [],
     settings: { quiet_hours: null, timezone: "America/Toronto", max_per_hour: 6, private_previews: false },
-    auth: { signedIn: true, mfaRequired: true },
+    auth: { signedIn: true, mfaRequired: true, real: false, mfaEnabled: false },
     vapidKey: MOCK_VAPID_KEY,
     subscriptions: [],
     deliveries: [],
@@ -233,7 +233,7 @@ export const handlers = [
       adapters: Object.fromEntries(
         ["agent", "llm", "embeddings", "repo", "scheduler", "auth", "notifier", "stt", "tts"].map((seam) => [
           seam,
-          { name: "msw", fake: true },
+          { name: seam === "auth" && db.auth.real ? "totp" : "msw", fake: !(seam === "auth" && db.auth.real) },
         ]),
       ),
     }),
@@ -243,7 +243,7 @@ export const handlers = [
   // --- auth ---
   http.get("*/api/me", () =>
     db.auth.signedIn
-      ? HttpResponse.json<User>({ id: "owner", display_name: "Owner (mock)", mfa_enabled: false })
+      ? HttpResponse.json<User>({ id: "owner", display_name: "Owner (mock)", mfa_enabled: db.auth.mfaEnabled })
       : HttpResponse.json({ detail: "login required" }, { status: 401 }),
   ),
   http.post<never, { username: string; password: string }>("*/api/auth/login", async ({ request }) => {
@@ -260,8 +260,18 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
   http.post("*/api/auth/mfa/enroll", () =>
-    HttpResponse.json({ otpauth_uri: "otpauth://totp/HelpMate:owner?secret=JBSWY3DPEHPK3PXP&issuer=HelpMate" }),
+    db.auth.real
+      ? HttpResponse.json({ otpauth_uri: "otpauth://totp/HelpMate:owner?secret=MOCKSECRETKEY234&issuer=HelpMate" })
+      : HttpResponse.json({ detail: "Two-step verification needs the real login" }, { status: 409 }),
   ),
+  http.post<never, { code: string }>("*/api/auth/mfa/enroll/confirm", async ({ request }) => {
+    if (!db.auth.real) return HttpResponse.json({ detail: "Two-step verification needs the real login" }, { status: 409 });
+    if ((await request.json()).code !== "246810") {
+      return HttpResponse.json({ detail: "That code doesn't match. Use the newest code." }, { status: 400 });
+    }
+    db.auth.mfaEnabled = true;
+    return new HttpResponse(null, { status: 204 });
+  }),
   http.post("*/api/auth/logout", () => {
     db.auth.signedIn = false;
     return new HttpResponse(null, { status: 204 });

@@ -24,7 +24,11 @@ class DevAuth:
         return DEV_TOKEN
 
     async def enroll_mfa(self) -> str:
+        # a well-known example secret: dev auth protects nothing (the routes refuse enrolment)
         return "otpauth://totp/HelpMate:owner?secret=JBSWY3DPEHPK3PXP&issuer=HelpMate"
+
+    async def confirm_mfa(self, code: str) -> bool:
+        return False  # dev auth can't turn two-step verification on
 
     async def logout(self, session_token: str | None) -> None:
         return None

@@ -81,6 +81,16 @@ export function useEnrollMfa() {
   });
 }
 
+/** Finish enrolment with the first code from the authenticator app. Only then is 2FA on. */
+export function useConfirmMfa() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (code: string) =>
+      unwrap(await api.POST("/api/auth/mfa/enroll/confirm", { body: { code } })),
+    onSuccess: () => invalidate(keys.me),
+  });
+}
+
 export function useLogout() {
   const client = useQueryClient();
   return useMutation({

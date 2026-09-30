@@ -74,6 +74,12 @@ class MfaEnrollOut(Body):
     otpauth_uri: str
 
 
+class MfaConfirmIn(Body):
+    """POST /api/auth/mfa/enroll/confirm (added Sep 30, additive): the first code from the app."""
+
+    code: str = Field(pattern=r"^\d{6}$")
+
+
 # --- chat ---
 
 

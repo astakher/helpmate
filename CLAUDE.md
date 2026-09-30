@@ -130,3 +130,6 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   golden set ≥ 60, recall@5, 10 prompt-injection cases.
 - [B] Postgres repos must pass `tests/contracts/test_repositories.py` (now incl. settings and
   `update_fact`); read-only Gmail/Calendar by project week 4.
+- [B] Real login (`HELPMATE_AUTH=totp`): implement `AuthPort.confirm_mfa` behind the stand-in
+  `POST /api/auth/mfa/enroll/confirm`. Until then 2FA **cannot** be on (the dev login refuses enrolment
+  with a 409 and the Settings card says so), and `tailscale funnel` stays off. See plan §9 item 11.

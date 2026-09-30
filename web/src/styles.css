@@ -776,3 +776,7 @@ input[type="radio"] {
   margin-top: 0.5rem;
   font-size: 0.9rem;
 }
+
+.mfa-note p {
+  margin: 0 0 0.5rem;
+}
