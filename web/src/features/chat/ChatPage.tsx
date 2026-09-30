@@ -14,7 +14,9 @@ export function ChatPage() {
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => endRef.current?.scrollIntoView?.({ block: "end" }), [turns]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView?.({ block: "end" });
+  }, [turns]);
 
   function submit(event?: FormEvent) {
     event?.preventDefault();

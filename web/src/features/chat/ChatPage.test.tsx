@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../mocks/handlers";
 import { axeViolations, renderWithProviders } from "../../test/render";
 import { ChatPage } from "./ChatPage";
@@ -29,5 +29,22 @@ describe("ChatPage", () => {
     renderWithProviders(<ChatPage />);
     await user.click(screen.getByRole("button", { name: "what are my reminders?" }));
     expect(await screen.findByText(/\(mock\) You said/)).toBeInTheDocument();
+  });
+
+  describe("when scrollIntoView returns a Promise (current Chrome)", () => {
+    afterEach(() => {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    });
+
+    it("keeps rendering as turns change and on unmount", async () => {
+      // jsdom has no scrollIntoView; Chrome's returns a Promise, which must not become the effect cleanup.
+      Element.prototype.scrollIntoView = vi.fn(() => Promise.resolve()) as unknown as Element["scrollIntoView"];
+      const user = userEvent.setup();
+      const { unmount } = renderWithProviders(<ChatPage />);
+      await user.click(screen.getByRole("button", { name: "what are my reminders?" }));
+      expect(await screen.findByText(/\(mock\) You said/)).toBeInTheDocument();
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+      expect(() => unmount()).not.toThrow();
+    });
   });
 });
