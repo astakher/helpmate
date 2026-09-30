@@ -1,0 +1,423 @@
+{
+  "host": {
+    "host": "DESKTOP-O05C1ES",
+    "date": "2026-09-29 20:35",
+    "gpu": "NVIDIA GeForce GTX 1050 Ti with Max-Q Design, 4096 MiB",
+    "ollama": "0.34.4",
+    "cases": "15",
+    "runs": "1"
+  },
+  "reports": [
+    {
+      "model": "llama3.2:3b",
+      "load_s": 6.012875500000064,
+      "gpu_percent": 100,
+      "vram_gb": 2.55,
+      "cases": [
+        {
+          "id": "rem-at",
+          "ttft_ms": 2600.3,
+          "total_ms": 2644.1,
+          "tokens_per_s": 24.6,
+          "prompt_tokens_per_s": 381.8,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": false,
+          "notes": [
+            "due_at='2026-09-30T17:00:00-04:00', expected 2026-09-29 17:00"
+          ]
+        },
+        {
+          "id": "rem-in",
+          "ttft_ms": 1027.5,
+          "total_ms": 1087.9,
+          "tokens_per_s": 24.9,
+          "prompt_tokens_per_s": 5390.1,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": false,
+          "checks_ok": false,
+          "notes": [
+            "strict: Input should be a valid datetime or date, input is too short",
+            "due_at='PT10M', expected ~20:33"
+          ]
+        },
+        {
+          "id": "rem-tomorrow",
+          "ttft_ms": 1575.9,
+          "total_ms": 1637.4,
+          "tokens_per_s": 24.5,
+          "prompt_tokens_per_s": 5398.5,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "rem-hours",
+          "ttft_ms": 1439.8,
+          "total_ms": 1484.1,
+          "tokens_per_s": 24.6,
+          "prompt_tokens_per_s": 6547.0,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": false,
+          "notes": [
+            "due_at='2026-09-30T18:00:00-04:00', expected ~22:23"
+          ]
+        },
+        {
+          "id": "rem-recurring",
+          "ttft_ms": 1532.1,
+          "total_ms": 1579.7,
+          "tokens_per_s": 24.5,
+          "prompt_tokens_per_s": 5408.0,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": false,
+          "notes": [
+            "recurrence='' lacks 'MO'"
+          ]
+        },
+        {
+          "id": "task-term",
+          "ttft_ms": 1070.6,
+          "total_ms": 1116.4,
+          "tokens_per_s": 24.8,
+          "prompt_tokens_per_s": 5422.4,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-someday",
+          "ttft_ms": 949.2,
+          "total_ms": 993.2,
+          "tokens_per_s": 24.9,
+          "prompt_tokens_per_s": 5384.4,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-week",
+          "ttft_ms": 901.0,
+          "total_ms": 945.4,
+          "tokens_per_s": 25.1,
+          "prompt_tokens_per_s": 5391.5,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-default",
+          "ttft_ms": 591.2,
+          "total_ms": 636.7,
+          "tokens_per_s": 25.7,
+          "prompt_tokens_per_s": 6759.6,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "list-1",
+          "ttft_ms": 509.7,
+          "total_ms": 569.5,
+          "tokens_per_s": 26.0,
+          "prompt_tokens_per_s": 6729.0,
+          "called": "list_reminders",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "list-2",
+          "ttft_ms": 512.0,
+          "total_ms": 558.1,
+          "tokens_per_s": 25.7,
+          "prompt_tokens_per_s": 6744.8,
+          "called": "list_reminders",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "chat-greeting",
+          "ttft_ms": 511.7,
+          "total_ms": 556.4,
+          "tokens_per_s": 25.8,
+          "prompt_tokens_per_s": 6699.4,
+          "called": "list_reminders",
+          "tool_ok": false,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        },
+        {
+          "id": "chat-fact",
+          "ttft_ms": 512.5,
+          "total_ms": 573.1,
+          "tokens_per_s": 25.9,
+          "prompt_tokens_per_s": 6732.4,
+          "called": "list_reminders",
+          "tool_ok": false,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        },
+        {
+          "id": "chat-explain",
+          "ttft_ms": 531.4,
+          "total_ms": 590.5,
+          "tokens_per_s": 25.9,
+          "prompt_tokens_per_s": 5377.9,
+          "called": "list_reminders",
+          "tool_ok": false,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        },
+        {
+          "id": "chat-negation",
+          "ttft_ms": 488.0,
+          "total_ms": 533.7,
+          "tokens_per_s": 26.1,
+          "prompt_tokens_per_s": 5380.6,
+          "called": null,
+          "tool_ok": true,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        }
+      ],
+      "error": null,
+      "summary": {
+        "model": "llama3.2:3b",
+        "load_s": 6.0,
+        "gpu_percent": 100,
+        "vram_gb": 2.55,
+        "ttft_median_ms": 901.0,
+        "ttft_p90_ms": 1575.9,
+        "tokens_per_s": 25.1,
+        "tool_choice_pct": 80,
+        "args_strict_pct": 91,
+        "checks_pct": 64
+      }
+    },
+    {
+      "model": "qwen3:4b",
+      "load_s": 11.266791300000023,
+      "gpu_percent": 84,
+      "vram_gb": 2.96,
+      "cases": [
+        {
+          "id": "rem-at",
+          "ttft_ms": 1500.1,
+          "total_ms": 48596.8,
+          "tokens_per_s": 16.4,
+          "prompt_tokens_per_s": 299.2,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "rem-in",
+          "ttft_ms": 1715.6,
+          "total_ms": 47618.7,
+          "tokens_per_s": 16.0,
+          "prompt_tokens_per_s": 272.4,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "rem-tomorrow",
+          "ttft_ms": 1634.1,
+          "total_ms": 92636.2,
+          "tokens_per_s": 15.7,
+          "prompt_tokens_per_s": 295.5,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "rem-hours",
+          "ttft_ms": 1685.1,
+          "total_ms": 55737.5,
+          "tokens_per_s": 15.9,
+          "prompt_tokens_per_s": 288.9,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "rem-recurring",
+          "ttft_ms": 1684.0,
+          "total_ms": 158340.1,
+          "tokens_per_s": 14.5,
+          "prompt_tokens_per_s": 285.3,
+          "called": "create_reminder",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-term",
+          "ttft_ms": 1727.3,
+          "total_ms": 57758.3,
+          "tokens_per_s": 15.1,
+          "prompt_tokens_per_s": 298.8,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-someday",
+          "ttft_ms": 1681.6,
+          "total_ms": 74201.1,
+          "tokens_per_s": 14.4,
+          "prompt_tokens_per_s": 299.6,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-week",
+          "ttft_ms": 1660.7,
+          "total_ms": 43802.0,
+          "tokens_per_s": 14.7,
+          "prompt_tokens_per_s": 307.8,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "task-default",
+          "ttft_ms": 1638.4,
+          "total_ms": 41783.3,
+          "tokens_per_s": 15.2,
+          "prompt_tokens_per_s": 296.1,
+          "called": "create_task",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "list-1",
+          "ttft_ms": 434.9,
+          "total_ms": 7893.2,
+          "tokens_per_s": 15.5,
+          "prompt_tokens_per_s": 2020.3,
+          "called": "list_reminders",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "list-2",
+          "ttft_ms": 1917.6,
+          "total_ms": 9103.9,
+          "tokens_per_s": 14.6,
+          "prompt_tokens_per_s": 243.4,
+          "called": "list_reminders",
+          "tool_ok": true,
+          "args_strict_ok": true,
+          "checks_ok": true,
+          "notes": []
+        },
+        {
+          "id": "chat-greeting",
+          "ttft_ms": 247.7,
+          "total_ms": 10518.6,
+          "tokens_per_s": 15.6,
+          "prompt_tokens_per_s": 2020.1,
+          "called": null,
+          "tool_ok": true,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        },
+        {
+          "id": "chat-fact",
+          "ttft_ms": 247.8,
+          "total_ms": 13184.8,
+          "tokens_per_s": 14.7,
+          "prompt_tokens_per_s": 1964.7,
+          "called": null,
+          "tool_ok": true,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        },
+        {
+          "id": "chat-explain",
+          "ttft_ms": 341.1,
+          "total_ms": 22444.5,
+          "tokens_per_s": 15.2,
+          "prompt_tokens_per_s": 1423.1,
+          "called": null,
+          "tool_ok": true,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        },
+        {
+          "id": "chat-negation",
+          "ttft_ms": 1552.9,
+          "total_ms": 17418.7,
+          "tokens_per_s": 14.9,
+          "prompt_tokens_per_s": 305.8,
+          "called": null,
+          "tool_ok": true,
+          "args_strict_ok": null,
+          "checks_ok": null,
+          "notes": []
+        }
+      ],
+      "error": null,
+      "summary": {
+        "model": "qwen3:4b",
+        "load_s": 11.3,
+        "gpu_percent": 84,
+        "vram_gb": 2.96,
+        "ttft_median_ms": 1638.4,
+        "ttft_p90_ms": 1727.3,
+        "tokens_per_s": 15.2,
+        "tool_choice_pct": 100,
+        "args_strict_pct": 100,
+        "checks_pct": 100
+      }
+    }
+  ]
+}

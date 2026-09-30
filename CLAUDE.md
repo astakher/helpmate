@@ -46,11 +46,25 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - `astral-sh/setup-uv` has no floating major tag — pin exact (`v10.2.0`).
 - Starlette `StaticFiles` normalises paths with OS separators; check `scope["path"]`, not `path`.
 - Windows: `.gitattributes` forces LF (ps1 = CRLF); Docker ports must be `127.0.0.1:`-bound.
+- Never return a value from a `useEffect` arrow (`() => el.scrollIntoView()`): Chrome's scroll
+  methods now return a Promise, React calls it as cleanup → blank page. jsdom doesn't catch it.
+- Ollama 0.34 keeps 1 GiB VRAM free by default and spills layers to CPU on 4 GB cards even when
+  the model fits. `LLAMA_ARG_FIT_TARGET=512` (MiB) fixes it; check `ollama ps` = 100% GPU.
+- `qwen3:4b` is the thinking-only 2507 build: `think:false` is ignored. Use `qwen3:4b-instruct`
+  for a non-thinking comparison.
 
 ## Status (update as phases land)
 - Done: Phase 0–2 (repo, CI, contract v0.1, walking skeleton), benchmark script, Phase 4 web
   (tasks, folders + custom fields, memory review, login/TOTP screens, settings, edit-then-approve).
-- Not yet visually checked in a browser. Not yet run against real Ollama or a real phone.
-- Next: Phase 3 on the GPU machine (Ollama, `ollama ps` = 100% GPU, run the benchmark, commit
-  results) → Phase 5 real voice → Phase 6 Web Push → Phase 7 Tailscale. Midterm video ≈ Oct 26.
+- Done: **Phase 3 on the XPS (Sep 29)**. Driver 582.66, Ollama 0.34.4 (official), llama3.2:3b
+  **100% GPU, 2.55 GB VRAM** (needs `LLAMA_ARG_FIT_TARGET=512`). Skeleton checked in Chrome with
+  fakes and with `HELPMATE_LLM=ollama` (warm TTFT ≈ 0.5 s). Not yet run on a real phone.
+- Benchmark (`docs/benchmarks/desktop-o05c1es.md`, 15 seed prompts): llama3.2:3b — tool choice
+  80%, args valid 91%, args correct 64%, TTFT median 0.9 s, 25 tok/s, 100% GPU. qwen3:4b — 100%
+  on all three, but the tag is the thinking-only 2507 build (ignores `think:false`, ~48 s per
+  answer) and spills 16% to CPU.
+- **Default model: llama3.2:3b** — the only one meeting the speed and 100%-GPU targets, and the
+  Updated spec asks for Llama-family. Misses to fix in A's agent: relative times ("in 10 minutes"
+  → `PT10M`), empty `recurrence`, and tool calls on small talk. See the report's Misses list.
+- Next: Phase 5 real voice → Phase 6 Web Push → Phase 7 Tailscale. Midterm video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.

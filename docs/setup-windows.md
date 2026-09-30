@@ -8,14 +8,23 @@ This covers the machine that runs inference. Steps marked **(once)** only need d
    ```powershell
    nvidia-smi          # should show the GPU, e.g. GTX 1050 Ti, 4096 MiB
    ```
+   For GTX 10-series (Pascal) cards nvidia.com now lists it as a **"GeForce Security Update Driver"**
+   (582.x on the XPS). That is the full driver, so take it. Pick *Custom → Perform a clean
+   installation* and reboot afterwards.
 2. **Dev tools** (winget ships with Windows 11):
    ```powershell
-   winget install Git.Git OpenJS.NodeJS.LTS astral-sh.uv GitHub.cli Microsoft.VisualStudioCode
+   winget install Git.Git OpenJS.NodeJS.22 astral-sh.uv GitHub.cli Microsoft.VisualStudioCode
    winget install Docker.DockerDesktop      # choose the WSL2 backend when asked
+   ```
+   Use `OpenJS.NodeJS.22`, not `OpenJS.NodeJS.LTS`: LTS is now Node 24, and CI pins 22.
+   **Open a new terminal** afterwards, because winget's PATH changes don't reach terminals that were
+   already open. Then:
+   ```powershell
    git config --global core.longpaths true
    git config --global user.name  "Your Name"
    git config --global user.email "you@example.com"   # must match your GitHub account
-   gh auth login
+   gh auth login        # GitHub.com → HTTPS → login with a web browser
+   gh auth setup-git    # lets git push with gh's login
    ```
 3. **Cap WSL2 memory** so Docker can't take 8 GB of a 16 GB machine. Create `%UserProfile%\.wslconfig`:
    ```ini
@@ -27,27 +36,44 @@ This covers the machine that runs inference. Steps marked **(once)** only need d
 
 ## 2. Ollama (once)
 
-1. Install it **from ollama.com/download only**, not a third-party installer. The official build includes the CUDA 12 backend that Pascal GPUs (compute 6.1) need.
+1. Install it **from ollama.com/download only**, or with `winget install Ollama.Ollama` (it downloads the
+   official `OllamaSetup.exe` from github.com/ollama/ollama). Never use a third-party installer. The official
+   build includes the CUDA 12 backend that Pascal GPUs (compute 6.1) need; its log shows it skipping CUDA 13
+   and using `cuda_v12`, which is correct.
 2. Set user environment variables, then **quit and restart Ollama** from the tray icon:
    ```powershell
    setx OLLAMA_HOST 127.0.0.1:11434       # never expose Ollama on the network
    setx OLLAMA_KEEP_ALIVE 30m             # avoid cold reloads while developing
    setx OLLAMA_CONTEXT_LENGTH 4096
    setx OLLAMA_FLASH_ATTENTION 1
+   setx LLAMA_ARG_FIT_TARGET 512          # 4 GB cards: see below
    ```
+   `setx` only affects programs started **afterwards**. After quitting from the tray, start Ollama again
+   from the Start menu (not from a terminal that was open before `setx`). Check that it picked them up:
+   the `server config` line in `%LOCALAPPDATA%\Ollama\server.log` should show `OLLAMA_CONTEXT_LENGTH:4096
+   OLLAMA_FLASH_ATTENTION:true OLLAMA_KEEP_ALIVE:30m0s`.
+
+   **Why `LLAMA_ARG_FIT_TARGET`:** Ollama 0.34 sizes the GPU offload to leave **1 GiB of VRAM free**. On a
+   4 GB card that pushes 2 of llama3.2:3b's 29 layers to the CPU (`ollama ps` shows `17%/83% CPU/GPU`)
+   even though about 1 GB is still free. Setting it to 512 MiB puts the whole model on the GPU.
 3. Pull the models (about 5 GB total):
    ```powershell
    ollama pull llama3.2:3b
    ollama pull qwen3:4b
    ollama pull nomic-embed-text
    ```
+   Note: `qwen3:4b` is now the **thinking-only 2507 build**. It ignores `think:false` and reasons for
+   about a minute before each answer. Use `qwen3:4b-instruct` for a non-thinking comparison.
 4. **Check that the GPU is actually used:**
    ```powershell
    ollama run llama3.2:3b "Say hi in five words"
    ollama ps          # PROCESSOR column must say "100% GPU"
    ```
-   If it says CPU, update the NVIDIA driver and reinstall Ollama from the official site.
-5. **Run the model benchmark** after step 3 below, once the code is cloned. It takes about 5 minutes and writes `docs/benchmarks/<machine>.md`; commit that file:
+   Measured on the XPS: llama3.2:3b = 100% GPU, 2.55 GB VRAM. qwen3:4b needs about 3.0 GB of the
+   3.3 GB free, so it still spills 16% to the CPU with a 512 MiB target. That is expected on 4 GB.
+5. **Run the model benchmark** after step 3 below, once the code is cloned. On the XPS it takes about 15 minutes
+   (llama is done in under a minute; qwen3:4b's thinking takes the rest). It writes
+   `docs/benchmarks/<hostname>.md` and `.json`; commit both:
    ```powershell
    cd backend
    uv run helpmate-bench --models llama3.2:3b qwen3:4b
@@ -62,8 +88,9 @@ cd helpmate
 copy .env.example .env
 cd backend; uv sync; cd ..
 cd services\speech; uv sync; cd ..\..
-cd web; npm install; cd ..
+cd web; npm ci; cd ..
 ```
+`npm ci` installs exactly what `package-lock.json` says, the same as CI.
 
 ## 4. Run the stack
 
@@ -98,6 +125,11 @@ To use real components, edit `.env`, one seam at a time:
 ## Troubleshooting
 
 - **`ollama ps` shows CPU:** the driver is too old or Ollama isn't the official build; see step 2.
+- **`ollama ps` shows a CPU/GPU split, but `nvidia-smi` shows free VRAM:** look for `cannot meet free memory
+  target` in `%LOCALAPPDATA%\Ollama\server.log`. Set `LLAMA_ARG_FIT_TARGET=512` and restart Ollama (§2.2).
+- **Settings in `server.log` show defaults (`OLLAMA_CONTEXT_LENGTH:0`, `KEEP_ALIVE:5m0s`):** Ollama was started
+  from a process that was running before `setx`. Quit it from the tray and start it from the Start menu.
+- **`gh`, `node` or `uv` "not recognized" right after installing:** open a new terminal (PATH is only read at start).
 - **Docker ports reachable from the LAN:** every port in `infra/docker-compose.yml` must be written `127.0.0.1:<port>:<port>`.
 - **Timezone errors in tests:** make sure `tzdata` is installed (`uv sync` handles it). Windows has no system timezone database.
 - **Shell script fails with `\r` in a container:** `.gitattributes` forces LF. Run `git add --renormalize .` once.
