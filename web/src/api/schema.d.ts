@@ -285,6 +285,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/week": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Week */
+        get: operations["week_api_week_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/week/schedule-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule Task
+         * @description Propose a calendar event for the task in the first free slot that fits (approval card).
+         */
+        post: operations["schedule_task_api_week_schedule_task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/suggestions": {
         parameters: {
             query?: never;
@@ -780,6 +817,19 @@ export interface components {
             /** Due At */
             due_at?: string | null;
         };
+        /** DayPlan */
+        DayPlan: {
+            /** Date */
+            date: string;
+            /** Events */
+            events: components["schemas"]["CalendarEvent"][];
+            /** Free Slots */
+            free_slots: components["schemas"]["TimeRange"][];
+            /** Reminders */
+            reminders: components["schemas"]["Reminder"][];
+            /** Tasks Due */
+            tasks_due: components["schemas"]["Task"][];
+        };
         /** DecisionIn */
         DecisionIn: {
             /**
@@ -1064,6 +1114,8 @@ export interface components {
              * @default false
              */
             private_previews: boolean;
+            /** Checkin At */
+            checkin_at?: string | null;
         };
         /** PatchTaskIn */
         PatchTaskIn: {
@@ -1186,6 +1238,16 @@ export interface components {
          * @enum {string}
          */
         Role: "user" | "assistant";
+        /** ScheduleTaskIn */
+        ScheduleTaskIn: {
+            /** Task Id */
+            task_id: string;
+            /**
+             * Minutes
+             * @default 60
+             */
+            minutes: number;
+        };
         /** SpeakIn */
         SpeakIn: {
             /** Text */
@@ -1341,6 +1403,20 @@ export interface components {
         VapidKeyOut: {
             /** Public Key */
             public_key: string | null;
+        };
+        /**
+         * WeekOut
+         * @description The next 7 days, starting today, plus this week's tasks that have no date yet.
+         */
+        WeekOut: {
+            /** Timezone */
+            timezone: string;
+            /** Days */
+            days: components["schemas"]["DayPlan"][];
+            /** Unscheduled */
+            unscheduled: components["schemas"]["Task"][];
+            /** Calendar Error */
+            calendar_error?: string | null;
         };
         /** ErrorEvent */
         ErrorEvent: {
@@ -2015,6 +2091,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodayOut"];
+                };
+            };
+        };
+    };
+    week_api_week_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekOut"];
+                };
+            };
+        };
+    };
+    schedule_task_api_week_schedule_task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleTaskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

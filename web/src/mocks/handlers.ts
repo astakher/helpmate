@@ -19,6 +19,7 @@ import type {
   Task,
   TodayOut,
   ToolInfo,
+  WeekOut,
   User,
 } from "../api/types";
 
@@ -44,6 +45,7 @@ type Db = {
   spoken: string[]; // every text sent to the mock TTS
   chats: Record<string, ChatMessage[]>; // session id -> stored messages, as the API keeps them
   brief: Pick<TodayOut, "events" | "free_slots" | "unread" | "calendar_error" | "mail_error">;
+  week: { days: WeekOut["days"] | null; calendar_error: string | null; full: boolean }; // days null: 7 empty days from today
 };
 
 export const db: Db = fresh();
@@ -81,7 +83,7 @@ function fresh(): Db {
     items: [],
     suggestions: [],
     facts: [],
-    settings: { quiet_hours: null, timezone: "America/Toronto", max_per_hour: 6, private_previews: false },
+    settings: { quiet_hours: null, timezone: "America/Toronto", max_per_hour: 6, private_previews: false, checkin_at: null },
     auth: { signedIn: true, mfaRequired: true, real: false, mfaEnabled: false },
     vapidKey: MOCK_VAPID_KEY,
     subscriptions: [],
@@ -91,6 +93,7 @@ function fresh(): Db {
     spoken: [],
     chats: {},
     brief: { events: [], free_slots: [], unread: [], calendar_error: null, mail_error: null },
+    week: { days: null, calendar_error: null, full: false },
   };
 }
 
@@ -454,6 +457,51 @@ export const handlers = [
     if (!reminder) return notFound("reminder");
     reminder.status = "cancelled";
     return HttpResponse.json(reminder);
+  }),
+  http.get("*/api/week", () => {
+    const day = (offset: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offset);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    const days =
+      db.week.days ??
+      Array.from({ length: 7 }, (_, i) => ({ date: day(i), events: [], free_slots: [], reminders: [], tasks_due: [] }));
+    return HttpResponse.json<WeekOut>({
+      timezone: "America/Toronto",
+      days,
+      unscheduled: db.tasks.filter((t) => t.horizon === "week" && !t.done && !t.due_at),
+      calendar_error: db.week.calendar_error,
+    });
+  }),
+  http.post<never, { task_id: string; minutes?: number }>("*/api/week/schedule-task", async ({ request }) => {
+    const body = await request.json();
+    const task = db.tasks.find((t) => t.id === body.task_id);
+    if (!task) return notFound("task");
+    if (db.week.full) {
+      return HttpResponse.json({ detail: "No free 60 minutes in the next 7 days between 09:00 and 18:00." }, { status: 409 });
+    }
+    const start = new Date();
+    start.setDate(start.getDate() + 1);
+    start.setHours(10, 0, 0, 0);
+    const end = new Date(start.getTime() + (body.minutes ?? 60) * 60_000);
+    const proposal: Proposal = {
+      id: newId(),
+      session_id: null,
+      tool: "create_event",
+      title: `Event: ${task.title}`,
+      summary: "tomorrow 10:00–11:00",
+      args: { title: task.title, start: start.toISOString(), end: end.toISOString(), location: null },
+      preview: null,
+      warnings: [],
+      risk: "external",
+      status: "pending",
+      created_at: nowIso(),
+      decided_at: null,
+      result: null,
+    };
+    db.proposals.unshift(proposal);
+    return HttpResponse.json(proposal, { status: 201 });
   }),
   http.get("*/api/today", () =>
     HttpResponse.json<TodayOut>({

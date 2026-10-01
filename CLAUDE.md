@@ -152,6 +152,14 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   delete); the Today page is a daily brief (today's events with "Now", free time left, newest
   unread mail linking to Gmail, reminders, this week's tasks). `GET /api/today` reads Calendar and
   Gmail in parallel with an 8 s limit each; a failing one shows its own error. Live: ~1.2 s.
+- **Week plan + evening check-in** (Oct 1): `/week` shows the next 7 days (events, free time,
+  reminders, tasks due) and "To fit in this week" (week tasks with no date and no same-titled
+  event); "Find an hour" → `POST /api/week/schedule-task` → a create_event approval card in the
+  first free slot. Settings → Evening check-in (`checkin_at`) → a daily push from the
+  JobScheduler (`worker/checkin.py`: queued by a sweep, re-checks settings, skips if > 2 h late):
+  "2 tasks left this week. Tomorrow: 2 events (first at 09:30), 1 reminder." Checked end to end
+  on the all-fakes test instance (`start_test_instance.ps1` pattern: port 8010, every adapter
+  fake, dev login), never on the owner's data.
 - **Memory is used in answers** (Oct 1; stand-in for A, `memory/retrieval.py`): approved facts are
   embedded locally (nomic-embed-text on the CPU, llama stays 100% GPU) and the ≤ 3 that match a
   message (score ≥ 0.55 and within 0.08 of the best) go into the reply/tool prompt; the chat shows

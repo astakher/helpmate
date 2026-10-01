@@ -149,6 +149,31 @@ class TodayOut(Body):
     mail_error: str | None = None
 
 
+# --- week plan (added Oct 1) ---
+
+
+class DayPlan(Body):
+    date: str  # local date, YYYY-MM-DD
+    events: list[CalendarEvent]
+    free_slots: list[TimeRange]  # inside the owner's day hours, >= 30 min (today: from now)
+    reminders: list[Reminder]  # scheduled ones due that day
+    tasks_due: list[Task]  # open tasks with a due date that day
+
+
+class WeekOut(Body):
+    """The next 7 days, starting today, plus this week's tasks that have no date yet."""
+
+    timezone: str
+    days: list[DayPlan]
+    unscheduled: list[Task]
+    calendar_error: str | None = None
+
+
+class ScheduleTaskIn(Body):
+    task_id: str
+    minutes: int = Field(default=60, ge=15, le=480)
+
+
 # --- memory ---
 
 

@@ -521,6 +521,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TodayOut'
+  /api/week:
+    get:
+      tags:
+      - plan
+      summary: Week
+      operationId: week_api_week_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeekOut'
+  /api/week/schedule-task:
+    post:
+      tags:
+      - plan
+      summary: Schedule Task
+      description: Propose a calendar event for the task in the first free slot that fits (approval card).
+      operationId: schedule_task_api_week_schedule_task_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleTaskIn'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proposal'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/memory/suggestions:
     get:
       tags:
@@ -1270,6 +1309,40 @@ components:
       required:
       - title
       title: CreateTaskIn
+    DayPlan:
+      properties:
+        date:
+          type: string
+          title: Date
+        events:
+          items:
+            $ref: '#/components/schemas/CalendarEvent'
+          type: array
+          title: Events
+        free_slots:
+          items:
+            $ref: '#/components/schemas/TimeRange'
+          type: array
+          title: Free Slots
+        reminders:
+          items:
+            $ref: '#/components/schemas/Reminder'
+          type: array
+          title: Reminders
+        tasks_due:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Tasks Due
+      additionalProperties: false
+      type: object
+      required:
+      - date
+      - events
+      - free_slots
+      - reminders
+      - tasks_due
+      title: DayPlan
     DecisionIn:
       properties:
         decision:
@@ -1752,6 +1825,12 @@ components:
           type: boolean
           title: Private Previews
           default: false
+        checkin_at:
+          anyOf:
+          - type: string
+            format: time
+          - type: 'null'
+          title: Checkin At
       additionalProperties: false
       type: object
       title: NotificationSettings
@@ -1962,6 +2041,22 @@ components:
       - user
       - assistant
       title: Role
+    ScheduleTaskIn:
+      properties:
+        task_id:
+          type: string
+          title: Task Id
+        minutes:
+          type: integer
+          maximum: 480.0
+          minimum: 15.0
+          title: Minutes
+          default: 60
+      additionalProperties: false
+      type: object
+      required:
+      - task_id
+      title: ScheduleTaskIn
     SpeakIn:
       properties:
         text:
@@ -2248,6 +2343,34 @@ components:
       required:
       - public_key
       title: VapidKeyOut
+    WeekOut:
+      properties:
+        timezone:
+          type: string
+          title: Timezone
+        days:
+          items:
+            $ref: '#/components/schemas/DayPlan'
+          type: array
+          title: Days
+        unscheduled:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Unscheduled
+        calendar_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Calendar Error
+      additionalProperties: false
+      type: object
+      required:
+      - timezone
+      - days
+      - unscheduled
+      title: WeekOut
+      description: The next 7 days, starting today, plus this week's tasks that have no date yet.
     ErrorEvent:
       properties:
         type:

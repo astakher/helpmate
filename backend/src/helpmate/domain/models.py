@@ -273,6 +273,9 @@ class NotificationSettings(DomainModel):
     private_previews: bool = (
         False  # send generic text so no personal content transits the push service
     )
+    # Evening check-in: a daily push at this local time summing up the week and tomorrow; None =
+    # off. Added Oct 1, additive.
+    checkin_at: time | None = None
 
 
 # --- Audit -----------------------------------------------------------------------------------

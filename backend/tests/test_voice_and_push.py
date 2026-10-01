@@ -78,6 +78,7 @@ async def test_notification_settings_round_trip(client):
         "timezone": "America/Toronto",
         "max_per_hour": 4,
         "private_previews": True,
+        "checkin_at": "20:00:00",
     }
     assert (await client.put("/api/settings/notifications", json=body)).status_code == 200
     assert (await client.get("/api/settings/notifications")).json() == body

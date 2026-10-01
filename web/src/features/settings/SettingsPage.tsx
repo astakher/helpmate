@@ -40,7 +40,7 @@ export function SettingsPage() {
   );
 }
 
-function NotificationSettingsForm() {
+export function NotificationSettingsForm() {
   const settings = useNotificationSettings();
   const save = useSaveNotificationSettings();
   const [saved, setSaved] = useState(false);
@@ -59,6 +59,7 @@ function NotificationSettingsForm() {
       quiet_hours: quiet
         ? { start: `${form.get("quiet_start")}:00`, end: `${form.get("quiet_end")}:00` }
         : null,
+      checkin_at: form.get("checkin") === "on" ? `${form.get("checkin_at")}:00` : null,
     };
     setSaved(false);
     await save.mutateAsync(next);
@@ -83,6 +84,17 @@ function NotificationSettingsForm() {
             <input type="time" name="quiet_end" defaultValue={current.quiet_hours?.end.slice(0, 5) ?? "07:00"} />
           </label>
         </div>
+      </fieldset>
+      <fieldset>
+        <legend>Evening check-in</legend>
+        <label className="inline">
+          <input type="checkbox" name="checkin" defaultChecked={!!current.checkin_at} /> Send me a short summary
+          each evening: tasks left this week, and tomorrow's events and reminders
+        </label>
+        <label>
+          At
+          <input type="time" name="checkin_at" defaultValue={current.checkin_at?.slice(0, 5) ?? "20:00"} />
+        </label>
       </fieldset>
       <label>
         At most this many notifications per hour

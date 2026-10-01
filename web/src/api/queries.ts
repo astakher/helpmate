@@ -24,6 +24,7 @@ export const keys = {
   facts: ["memory", "facts"] as const,
   notificationSettings: ["settings", "notifications"] as const,
   chats: ["chat", "sessions"] as const,
+  week: ["week"] as const,
 };
 
 function useInvalidate() {
@@ -153,6 +154,24 @@ export function useToday() {
     queryKey: keys.today,
     queryFn: async () => unwrap(await api.GET("/api/today")),
     refetchInterval: 60_000, // each refresh also reads Google Calendar + Gmail (plus on focus)
+  });
+}
+
+/** The next 7 days: events, free time, reminders, tasks due, and week tasks with no date. */
+export function useWeek() {
+  return useQuery({
+    queryKey: keys.week,
+    queryFn: async () => unwrap(await api.GET("/api/week")),
+  });
+}
+
+/** "Find time": proposes a calendar event for the task in the first free slot (an approval card). */
+export function useScheduleTask() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async ({ taskId, minutes = 60 }: { taskId: string; minutes?: number }) =>
+      unwrap(await api.POST("/api/week/schedule-task", { body: { task_id: taskId, minutes } })),
+    onSuccess: () => invalidate(["proposals"]), // every status: the nav's pending count too
   });
 }
 

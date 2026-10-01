@@ -622,8 +622,20 @@ a {
 
 /* ---------- Today: the daily brief ---------- */
 
-.main:has(.today) {
+.main:has(.today),
+.main:has(.week) {
   max-width: 1100px;
+}
+
+.week__free {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.week__task {
+  display: grid;
+  gap: 0.5rem;
 }
 
 .brief {

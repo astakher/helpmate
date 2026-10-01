@@ -7,6 +7,7 @@ from helpmate.api.routes import (
     health,
     memory,
     organize,
+    plan,
     proposals,
     push,
     settings,
@@ -15,7 +16,19 @@ from helpmate.api.routes import (
 )
 
 api_router = APIRouter(prefix="/api")
-for module in (health, chat, proposals, tools, organize, memory, voice, push, settings, audit):
+for module in (
+    health,
+    chat,
+    proposals,
+    tools,
+    organize,
+    plan,
+    memory,
+    voice,
+    push,
+    settings,
+    audit,
+):
     api_router.include_router(module.router)
 api_router.include_router(auth.router)
 api_router.include_router(auth.me_router)

@@ -78,6 +78,7 @@ class JobScheduler:
         self.name = name
         self.is_fake = is_fake
         self._handlers: dict[str, Handler] = {REMINDER: self._fire_reminder}
+        self._sweeps: list[Callable[[], Awaitable[None]]] = []
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
 
@@ -85,8 +86,14 @@ class JobScheduler:
     def store(self) -> JobStore:
         return self._store
 
-    def register(self, kind: str, handler: Handler) -> None:
+    def register(
+        self, kind: str, handler: Handler, sweep: Callable[[], Awaitable[None]] | None = None
+    ) -> None:
+        """Run `handler` for jobs of `kind`; `sweep` (optional) runs every tick, e.g. to queue
+        the next daily job from settings that may have changed."""
         self._handlers[kind] = handler
+        if sweep is not None:
+            self._sweeps.append(sweep)
 
     async def enqueue(self, job: Job) -> None:
         """Queue any job kind (idempotent by job id) and wake the loop."""
@@ -128,6 +135,11 @@ class JobScheduler:
         now = self._clock.now()
         for reminder in await self._repos.reminders.due(now):  # the sweep
             await self._store.put(reminder_job(reminder))
+        for sweep in self._sweeps:
+            try:
+                await sweep()
+            except Exception:
+                log.exception("job sweep failed")
         done = 0
         for job in await self._store.claim(now):
             handler = self._handlers.get(job.kind)
