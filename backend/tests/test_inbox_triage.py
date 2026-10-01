@@ -56,22 +56,32 @@ class ObedientLLM:
         yield LLMChunk(done=True)
 
 
-async def test_rules_sort_gmail_categories_and_no_reply_senders_without_the_model():
+async def test_only_the_primary_tab_is_sorted_and_no_reply_senders_skip_the_model():
     inbox = FakeMail(
         [
             mail("50% off everything", labels=["CATEGORY_PROMOTIONS", "UNREAD"]),
             mail("Your order shipped", labels=["CATEGORY_UPDATES"]),
+            mail("Jo liked your post", labels=["CATEGORY_SOCIAL"]),
             mail("Weekly digest", sender="Campus <no-reply@campus.example>"),
         ]
     )
     llm = ObedientLLM({"category": "reply", "reason": "x"})
     sorted_mail = await Triage(inbox, llm).sort()
+    # promotions, updates and social mail stay out; the owner wants the Primary tab only
     assert [(t.email.subject, t.category, t.sorted_by) for t in sorted_mail] == [
-        ("50% off everything", Category.LOW, "rules"),
-        ("Your order shipped", Category.FYI, "rules"),
         ("Weekly digest", Category.FYI, "rules"),
     ]
     assert llm.calls == []
+
+
+def test_a_general_look_at_the_inbox_means_the_primary_tab():
+    from helpmate.agent.tools import inbox_query
+
+    assert inbox_query("") == "in:inbox category:primary"  # "show me the last mail"
+    assert inbox_query("is:unread") == "is:unread in:inbox category:primary"  # "any new emails?"
+    assert inbox_query("from:amazon is:unread") == "from:amazon is:unread"  # a search: every tab
+    assert inbox_query("invoice newer_than:7d") == "invoice newer_than:7d"
+    assert inbox_query("category:promotions") == "category:promotions"  # asked for a tab
 
 
 async def test_the_model_sees_the_email_only_as_fenced_data_and_answers_are_cleaned():
@@ -140,8 +150,7 @@ async def test_inbox_api_sorts_and_a_drafted_reply_is_an_approval_card(client, c
     )
     body = (await client.get("/api/inbox")).json()
     assert [(i["email"]["subject"], i["category"], i["suspicious"]) for i in body["items"]] == [
-        ("Can you review my draft?", "reply", True),
-        ("Sale!", "low", False),
+        ("Can you review my draft?", "reply", True),  # the promotion isn't in the Primary tab
     ]
 
     container.triage = Triage(container.mail, ObedientLLM({"body": "Happy to, I'll look tonight."}))

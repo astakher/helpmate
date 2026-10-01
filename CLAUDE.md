@@ -168,6 +168,10 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   addresses, the owner is warned. `helpmate-injection-bench`: prompt-only defence followed 3/7
   dictated replies; with quarantine 7/7 clean, 8/10 sorted on content (the 2 misses are
   phishing that reads as "action needed", and both are flagged).
+- **Primary tab only** (Oct 1, owner's request): the Inbox, the Today brief and a general look
+  from chat ("the last mail", `inbox_query` in `agent/tools.py`) add Gmail's `category:primary`,
+  so Promotions/Social/Updates/Forums never show. A search for someone or something
+  ("from:amazon", "invoice") still covers every tab. FakeMail honours the operator.
 - **Documents** (Oct 1; `agent/documents.py`, `/documents`): upload PDF/.docx/.txt/.md → bytes in
   SeaweedFS (`HELPMATE_FILES=s3`, `adapters/s3_files.py`, MinIO client), text cut into ~700-char
   passages, embedded (nomic, CPU), stored with pgvector (migration 0003); ask → top passages

@@ -55,6 +55,8 @@ class Triaged:
     sorted_by: str  # "rules" or "model"
 
 
+# unread mail in the Primary tab only: the owner doesn't want promotions or social mail here
+UNREAD_PRIMARY = "in:inbox is:unread category:primary"
 LOW_LABELS = {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "SPAM"}
 FYI_LABELS = {"CATEGORY_UPDATES", "CATEGORY_FORUMS"}
 NO_REPLY = re.compile(r"no-?reply|do-?not-?reply|notifications?@|mailer-daemon|bounce", re.I)
@@ -164,7 +166,7 @@ class Triage:
         self._cache: dict[str, tuple[Category, str]] = {}  # message id + content hash
 
     async def sort(self, limit: int = 12) -> list[Triaged]:
-        emails = await self._mail.search("in:inbox is:unread", limit)
+        emails = await self._mail.search(UNREAD_PRIMARY, limit)
         return list(await asyncio.gather(*(self._one(e) for e in emails)))
 
     async def _one(self, email: EmailSummary) -> Triaged:

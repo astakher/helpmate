@@ -266,8 +266,8 @@ function Unread({
           {gmail && (
             <>
               {" · "}
-              <a href="https://mail.google.com/mail/u/0/#search/is%3Aunread" target="_blank" rel="noopener noreferrer">
-                All unread in Gmail<span className="visually-hidden"> (opens Gmail)</span>
+              <a href="https://mail.google.com/mail/u/0/#search/is%3Aunread+category%3Aprimary" target="_blank" rel="noopener noreferrer">
+                All unread in Primary<span className="visually-hidden"> (opens Gmail)</span>
               </a>
             </>
           )}

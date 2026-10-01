@@ -10,6 +10,8 @@ from helpmate.domain.models import CalendarEvent, EmailDetail, EmailDraft, Email
 
 log = logging.getLogger("helpmate.connectors")
 
+_OTHER_TABS = {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS"}
+
 
 class FakeMail:
     name = "fake"
@@ -38,11 +40,13 @@ class FakeMail:
     async def search(self, query: str, limit: int = 20) -> list[EmailSummary]:
         terms = query.lower().split()
         words = [w for w in terms if ":" not in w]  # other Gmail operators are ignored
+        primary = "category:primary" in terms  # Gmail: not in Promotions/Social/Updates/Forums
         hits = [
             m
             for m in self.inbox
             if all(w in f"{m.sender} {m.subject} {m.snippet}".lower() for w in words)
             and (m.unread or "is:unread" not in terms)
+            and not (primary and set(m.labels) & _OTHER_TABS)
         ]
         return sorted(hits, key=lambda m: m.received_at, reverse=True)[:limit]
 

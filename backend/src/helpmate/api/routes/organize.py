@@ -13,6 +13,7 @@ from datetime import UTC, datetime, time, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from helpmate.agent.free_time import free_slots
+from helpmate.agent.triage import UNREAD_PRIMARY
 from helpmate.api.deps import ContainerDep, current_user
 from helpmate.api.schemas.bodies import (
     CreateFolderIn,
@@ -165,7 +166,7 @@ async def today(container: ContainerDep) -> TodayOut:
     ]
     (events, calendar_error), (unread, mail_error) = await asyncio.gather(
         _section(container.calendar.list_events(start, end)),
-        _section(container.mail.search("in:inbox is:unread", UNREAD_SHOWN)),
+        _section(container.mail.search(UNREAD_PRIMARY, UNREAD_SHOWN)),
     )
     hours = (container.settings.day_start_hour, container.settings.day_end_hour)
     free = (

@@ -248,8 +248,21 @@ class SearchEmailArgs(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+PRIMARY = "category:primary"  # Gmail's Primary tab: the owner doesn't want promotions here
+_ONLY_STATE = ("is:", "in:", "newer_than:", "older_than:", "category:")
+
+
+def inbox_query(query: str) -> str:
+    """A general look at the inbox ("the last mail", "any new emails?") covers only the Primary
+    tab; a search for someone or something ("from:amazon", "invoice") still covers every tab."""
+    terms = query.split()
+    if any(not t.startswith(_ONLY_STATE) or t.startswith("category:") for t in terms):
+        return query  # a real search, or a tab already chosen
+    return " ".join([*terms, *([] if "in:inbox" in terms else ["in:inbox"]), PRIMARY]).strip()
+
+
 async def _search_email(args: SearchEmailArgs, deps: ToolDeps) -> str:
-    found = await deps.mail.search(args.query or "in:inbox", args.limit)
+    found = await deps.mail.search(inbox_query(args.query), args.limit)
     if not found:
         return "No emails match." if args.query else "Your inbox is empty."
     lines = [

@@ -6,7 +6,7 @@ import { ProposalCard } from "../approvals/ProposalCard";
 const GROUPS: { category: TriagedEmail["category"]; title: string; empty: string }[] = [
   { category: "reply", title: "Needs a reply", empty: "Nobody is waiting on you." },
   { category: "fyi", title: "For your information", empty: "Nothing here." },
-  { category: "low", title: "Low priority", empty: "No promotions or notifications." },
+  { category: "low", title: "Low priority", empty: "No newsletters or notifications." },
 ];
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -32,8 +32,8 @@ export function InboxPage() {
     <section className="page inbox" aria-labelledby="inbox-heading">
       <h1 id="inbox-heading">Inbox</h1>
       <p className="muted">
-        Your unread mail, sorted on this computer by the local model. HelpMate never acts on what an email
-        says: replies are drafts you approve.
+        Your unread mail from Gmail's Primary tab (no Promotions or Social), sorted on this computer by the
+        local model. HelpMate never acts on what an email says: replies are drafts you approve.
       </p>
       {inbox.isPending && (
         <p className="muted" role="status">
