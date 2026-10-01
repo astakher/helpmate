@@ -8,8 +8,9 @@
   Each 2FA challenge lives 5 min and allows 5 codes.
 - TOTP (RFC 6238, 30 s steps, via pyotp): accepts the current step +/- 1 (phone clock drift) and
   never the same step twice (no replay). A new secret only takes effect after confirm_mfa.
-- The TOTP secret and last used step persist in data/auth.json (git-ignored), so 2FA survives a
-  restart. Sessions are in memory: a restart signs everyone out, which is safe.
+- The TOTP secret, last used step and sessions persist in data/auth.json (git-ignored), so 2FA
+  and sign-ins survive an API restart. Sessions are stored as SHA-256 digests of their tokens,
+  never the tokens. Changing the password (scripts/set_password.py) signs every device out.
 - Lost phone: `uv run python ../scripts/set_password.py --reset-2fa` (needs this machine).
 
 Workstream B's real version moves users, secrets and sessions into Postgres and adds recovery
@@ -18,6 +19,7 @@ codes; the AuthPort is the same.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -44,6 +46,11 @@ MAX_CODE_ATTEMPTS = 5
 STEP_SECONDS = 30
 # a real argon2 hash of a random value, so a wrong username costs as much time as a wrong password
 _DUMMY_HASH = PasswordHasher().hash(secrets.token_urlsafe(16))
+
+
+def _digest(token: str) -> str:
+    """What's stored for a session: a leaked state file doesn't hand out usable tokens."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 class TotpAuth:
@@ -77,7 +84,11 @@ class TotpAuth:
         self._session_ttl = session_ttl
         self._state: dict[str, Any] = self._load()
         self._pending_secret: str | None = None
-        self._sessions: dict[str, datetime] = {}
+        # sha256(token) -> expiry; saved in the state file so a restart keeps devices signed in
+        self._sessions: dict[str, datetime] = {
+            digest: datetime.fromisoformat(expires)
+            for digest, expires in self._state.get("sessions", {}).items()
+        }
         self._challenges: dict[str, tuple[datetime, int]] = {}  # id -> (expires, attempts)
         self._failures: deque[datetime] = deque()
         self._locked_until: datetime | None = None
@@ -89,9 +100,11 @@ class TotpAuth:
     async def user_for(self, session_token: str | None) -> User | None:
         if not session_token:
             return None
-        expires = self._sessions.get(session_token)
+        digest = _digest(session_token)
+        expires = self._sessions.get(digest)
         if expires is None or expires <= self._clock.now():
-            self._sessions.pop(session_token, None)
+            if self._sessions.pop(digest, None) is not None:
+                self._save_sessions()
             return None
         return User(id=OWNER_ID, display_name=self._username, mfa_enabled=self.mfa_enabled)
 
@@ -148,8 +161,8 @@ class TotpAuth:
         return True
 
     async def logout(self, session_token: str | None) -> None:
-        if session_token:
-            self._sessions.pop(session_token, None)
+        if session_token and self._sessions.pop(_digest(session_token), None) is not None:
+            self._save_sessions()
 
     # --- helpers ---------------------------------------------------------------------------
 
@@ -176,8 +189,14 @@ class TotpAuth:
 
     def _new_session(self, now: datetime) -> str:
         token = secrets.token_urlsafe(32)
-        self._sessions[token] = now + self._session_ttl
+        self._sessions = {d: e for d, e in self._sessions.items() if e > now}  # drop expired
+        self._sessions[_digest(token)] = now + self._session_ttl
+        self._save_sessions()
         return token
+
+    def _save_sessions(self) -> None:
+        self._state["sessions"] = {d: e.isoformat() for d, e in self._sessions.items()}
+        self._save()
 
     @staticmethod
     def _matching_step(secret: str, code: str, now: datetime) -> int | None:

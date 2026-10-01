@@ -823,6 +823,11 @@ export interface components {
             deferred: boolean;
             /** Detail */
             detail?: string | null;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
         };
         /** EmailSummary */
         EmailSummary: {

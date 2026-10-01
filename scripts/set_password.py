@@ -6,9 +6,10 @@ Run it in YOUR OWN terminal (it asks for the password without showing it), from 
     uv run python ../scripts/set_password.py --reset-2fa  # lost phone: turn two-step off
 
 Writes only an argon2id hash to .env (HELPMATE_OWNER_PASSWORD_HASH), never the password. Then set
-HELPMATE_AUTH=totp in .env and restart the API. Changing the password signs nothing else out, so
-restart the API to end existing sessions. --reset-2fa removes the TOTP secret from data/auth.json;
-anyone who can run this has the machine anyway, which is why it's the recovery path.
+HELPMATE_AUTH=totp in .env and restart the API. Changing the password also forgets every saved
+sign-in (data/auth.json), so after the restart every device has to sign in again. --reset-2fa
+removes the TOTP secret from data/auth.json; anyone who can run this has the machine anyway, which
+is why it's the recovery path.
 """
 
 from __future__ import annotations
@@ -48,7 +49,18 @@ def set_password() -> None:
     if getpass.getpass("Type it again: ") != first:
         sys.exit("The two entries didn't match. Nothing was changed.")
     write_env("HELPMATE_OWNER_PASSWORD_HASH", PasswordHasher().hash(first))
+    forget_sessions()
     print(f"Saved the password hash to {ENV}. Set HELPMATE_AUTH=totp there and restart the API.")
+    print("Every device will have to sign in again after the restart.")
+
+
+def forget_sessions() -> None:
+    """A new password must end the old sign-ins (the API reads them from here at start-up)."""
+    if not AUTH_STATE.exists():
+        return
+    state = json.loads(AUTH_STATE.read_text(encoding="utf-8"))
+    if state.pop("sessions", None) is not None:
+        AUTH_STATE.write_text(json.dumps(state), encoding="utf-8")
 
 
 def reset_2fa() -> None:

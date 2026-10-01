@@ -234,6 +234,9 @@ class DeliveryResult(DomainModel):
     delivered: int  # number of devices the push service accepted it for
     deferred: bool = False  # held back by quiet hours / rate limit
     detail: str | None = None
+    # devices the push service refused or couldn't be reached for (not expired ones, which are
+    # removed): the scheduler retries when this is > 0 and nothing was delivered. Oct 1, additive.
+    failed: int = 0
 
 
 class Delivery(DomainModel):

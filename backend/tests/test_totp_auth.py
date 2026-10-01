@@ -61,6 +61,21 @@ async def test_sessions_expire(auth, clock):
     assert await auth.user_for(token) is None
 
 
+async def test_sign_ins_survive_a_restart_and_only_digests_are_stored(tmp_path, clock):
+    state = tmp_path / "auth.json"
+    first = TotpAuth("aman", HASH, state, clock)
+    kept = (await first.login("aman", PASSWORD)).session_token
+    ended = (await first.login("aman", PASSWORD)).session_token
+    await first.logout(ended)
+    assert kept not in state.read_text(encoding="utf-8")  # a digest, never the token itself
+
+    restarted = TotpAuth("aman", HASH, state, clock)  # the API was restarted
+    assert await restarted.user_for(kept) is not None
+    assert await restarted.user_for(ended) is None  # signing out is remembered too
+    clock.advance(days=7, seconds=1)
+    assert await TotpAuth("aman", HASH, state, clock).user_for(kept) is None  # still expires
+
+
 async def test_five_failures_lock_sign_in_for_15_minutes(auth, clock):
     for _ in range(4):
         assert (await auth.login("aman", "nope")).retry_after_seconds is None

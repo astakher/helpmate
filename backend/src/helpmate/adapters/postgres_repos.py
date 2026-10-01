@@ -414,6 +414,7 @@ TABLES = (
     "deliveries",
     "audit",
     "settings",
+    "jobs",  # the scheduler's queue (migration 0002, adapters/postgres_jobs.py)
 )
 
 

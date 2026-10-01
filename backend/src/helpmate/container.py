@@ -177,7 +177,18 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
             repos, notifier, clock, settings.scheduler_tick_seconds, tz=settings.tz
         )
     else:
-        _not_yet("scheduler", settings.scheduler)
+        # Stand-in for Workstream B - not part of the Part C deliverable
+        from helpmate.adapters.postgres_jobs import PostgresJobStore
+        from helpmate.adapters.postgres_repos import PostgresRepositories
+        from helpmate.worker.scheduler import JobScheduler
+
+        if not isinstance(repos, PostgresRepositories):
+            raise AdapterNotImplemented(
+                "HELPMATE_SCHEDULER=pg keeps its queue in Postgres: set HELPMATE_REPO=postgres too."
+            )
+        scheduler = JobScheduler(
+            PostgresJobStore(repos.db), repos, notifier, clock, settings.tz, name="pg"
+        )
 
     # --- LLM + embeddings (A) ---
     llm: LLMPort

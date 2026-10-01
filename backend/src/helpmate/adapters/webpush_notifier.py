@@ -98,7 +98,9 @@ class WebPushNotifier:
             notification.body,
             detail,
         )
-        return DeliveryResult(notification_id=notification.id, delivered=delivered, detail=detail)
+        return DeliveryResult(
+            notification_id=notification.id, delivered=delivered, detail=detail, failed=failed
+        )
 
     async def _deliver(self, sub: PushSubscription, payload: str, headers: dict[str, str]) -> str:
         info = {"endpoint": sub.endpoint, "keys": sub.keys.model_dump()}

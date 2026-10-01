@@ -22,14 +22,18 @@ def test_openapi_publishes_the_chat_event_union():
     }
 
 
-@pytest.mark.parametrize(
-    ("seam", "choice", "owner"),
-    [("scheduler", "pg", "B")],
-)
-def test_unimplemented_adapters_fail_loudly(seam, choice, owner):
-    settings = Settings(_env_file=None, **{seam: choice})
-    with pytest.raises(AdapterNotImplemented, match=f"Workstream {owner}"):
-        build_container(settings)
+def test_the_postgres_scheduler_needs_the_postgres_repo():  # stand-in for Workstream B
+    with pytest.raises(AdapterNotImplemented, match="HELPMATE_REPO=postgres"):
+        build_container(Settings(_env_file=None, scheduler="pg"))
+    container = build_container(
+        Settings(
+            _env_file=None,
+            scheduler="pg",
+            repo="postgres",
+            database_url="postgresql://u:p@127.0.0.1:1/db",  # nothing connects until startup
+        )
+    )
+    assert (container.scheduler.name, container.scheduler.is_fake) == ("pg", False)
 
 
 def test_postgres_repos_need_a_database_url_and_then_build():  # stand-in for Workstream B

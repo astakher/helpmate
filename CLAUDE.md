@@ -186,9 +186,16 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   calls in the benchmark. (Done: calendar conflict + free-time tools; memory search + recall@5.)
 - [A/B] Memory search keeps its vectors in process (re-embedded after a restart, ~35 ms per fact);
   B can move them to a pgvector column without changing `MemoryRetriever`'s interface.
-- [B] Postgres: stand-in done (all repos, Alembic 0001, contract suite green). B owns the schema from
-  here (FKs, retention, backups + restore drill); the durable job queue (`scheduler=pg`, SKIP LOCKED)
-  is still unbuilt.
+- [B] Postgres: stand-in done (all repos, Alembic 0001-0002, contract suites green). B owns the
+  schema from here (FKs, retention, backups + restore drill).
+- [B] Durable scheduler: stand-in done Oct 1 (`HELPMATE_SCHEDULER=pg`, needs `repo=postgres`):
+  `worker/scheduler.py` (JobScheduler) on `worker/jobs.py`'s JobStore; Postgres store
+  `adapters/postgres_jobs.py` (table `jobs`, claim = UPDATE ... FOR UPDATE SKIP LOCKED with a 60 s
+  lease), retries 30 s / 2 min / 10 min / 30 min then "failed", sweep + reconcile so no reminder is
+  missed, sleeps until the next job. `dev` = the same scheduler on an in-memory store. Live on the
+  test DB: restart survived (fired 0.07 s late), two workers → 20/20 reminders, 0 duplicates,
+  median 0.18 s late. Left for B: run it as a separate worker process (LISTEN/NOTIFY to wake it),
+  and durable quiet-hours holds (QuietHoursNotifier still holds in memory).
 - [B] Gmail/Calendar: stand-in done (Sep 30). B moves the Google token from `data/google_token.json`
   to Postgres (encrypted), publishes the OAuth app (Testing mode = 7-day sign-ins), and adds reply
   threading (`EmailDraft.in_reply_to`) and ICS import.
@@ -196,9 +203,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   `scripts/set_password.py`). **On for the owner's XPS since Oct 1** (username in
   `HELPMATE_OWNER_USERNAME`; every endpoint but `/api/health` answers 401 without a session; the
   cookie is Secure over Tailscale because `tailscale serve` sends `X-Forwarded-Proto: https` from
-  127.0.0.1, which uvicorn trusts). Sessions live in the API's memory, so a restart signs every
-  device out. Live checks against the running app now need the owner to sign in: use the fakes
-  or ask, never weaken auth for testing. B moves users/secrets/sessions to Postgres and adds
-  recovery codes. `tailscale funnel` stays off until rate limiting exists. See plan §9 item 11.
-- [B] Recurring reminders: stand-in in `worker/recurrence.py` + `DevScheduler` (Sep 30, DST-tested);
-  B's Postgres job queue must reuse `next_occurrence` or pass `tests/test_recurrence.py`.
+  127.0.0.1, which uvicorn trusts). 2FA on (Oct 1). Sessions persist in `data/auth.json` as
+  SHA-256 digests (Oct 1), so an API restart keeps devices signed in; `set_password.py` forgets
+  them all. Live checks against the running app now need the owner to sign in: use the fakes,
+  the test DB, or ask; never weaken auth for testing. B moves users/secrets/sessions to Postgres
+  and adds recovery codes. `tailscale funnel` stays off until rate limiting exists. Plan §9 #11.
+- [B] Recurring reminders: `worker/recurrence.py` (Sep 30, DST-tested), used by the JobScheduler.

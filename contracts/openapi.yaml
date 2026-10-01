@@ -1338,6 +1338,10 @@ components:
           - type: string
           - type: 'null'
           title: Detail
+        failed:
+          type: integer
+          title: Failed
+          default: 0
       additionalProperties: false
       type: object
       required:
