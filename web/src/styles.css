@@ -620,6 +620,73 @@ a {
   background: var(--surface);
 }
 
+/* ---------- Today: the daily brief ---------- */
+
+.main:has(.today) {
+  max-width: 1100px;
+}
+
+.brief {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+  align-items: start;
+  margin-top: 0.5rem;
+}
+
+.brief__card {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.brief__card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.brief__more {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.event {
+  justify-content: flex-start;
+}
+
+.event__when {
+  flex: none;
+  min-width: 7.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.brief .list__row > .muted {
+  flex: none;
+  white-space: nowrap;
+}
+
+.event__what {
+  flex: 1;
+  min-width: 0;
+}
+
+.event--past {
+  opacity: 0.55;
+}
+
+.mail__text {
+  display: grid;
+  min-width: 0;
+}
+
+.mail__subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

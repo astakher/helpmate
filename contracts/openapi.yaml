@@ -510,6 +510,9 @@ paths:
       tags:
       - organize
       summary: Today
+      description: 'The Today board and daily brief: today''s reminders and events, free time left, newest
+
+        unread mail, this week''s tasks and what''s waiting for approval.'
       operationId: today_api_today_get
       responses:
         '200':
@@ -1101,6 +1104,41 @@ components:
       - actor
       - action
       title: AuditEntry
+    CalendarEvent:
+      properties:
+        id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id
+        title:
+          type: string
+          title: Title
+        start:
+          type: string
+          format: date-time
+          title: Start
+        end:
+          type: string
+          format: date-time
+          title: End
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      - start
+      - end
+      title: CalendarEvent
     ChatMessage:
       properties:
         id:
@@ -1306,6 +1344,37 @@ components:
       - notification_id
       - delivered
       title: DeliveryResult
+    EmailSummary:
+      properties:
+        id:
+          type: string
+          title: Id
+        sender:
+          type: string
+          title: Sender
+        subject:
+          type: string
+          title: Subject
+        snippet:
+          type: string
+          title: Snippet
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        unread:
+          type: boolean
+          title: Unread
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - sender
+      - subject
+      - snippet
+      - received_at
+      title: EmailSummary
     ExportOut:
       properties:
         exported_at:
@@ -1984,6 +2053,22 @@ components:
       - title
       - created_at
       title: Task
+    TimeRange:
+      properties:
+        start:
+          type: string
+          format: date-time
+          title: Start
+        end:
+          type: string
+          format: date-time
+          title: End
+      additionalProperties: false
+      type: object
+      required:
+      - start
+      - end
+      title: TimeRange
     TodayOut:
       properties:
         date:
@@ -2007,6 +2092,34 @@ components:
             $ref: '#/components/schemas/Proposal'
           type: array
           title: Pending Proposals
+        events:
+          items:
+            $ref: '#/components/schemas/CalendarEvent'
+          type: array
+          title: Events
+          default: []
+        free_slots:
+          items:
+            $ref: '#/components/schemas/TimeRange'
+          type: array
+          title: Free Slots
+          default: []
+        unread:
+          items:
+            $ref: '#/components/schemas/EmailSummary'
+          type: array
+          title: Unread
+          default: []
+        calendar_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Calendar Error
+        mail_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mail Error
       additionalProperties: false
       type: object
       required:

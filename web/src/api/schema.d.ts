@@ -271,7 +271,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Today */
+        /**
+         * Today
+         * @description The Today board and daily brief: today's reminders and events, free time left, newest
+         *     unread mail, this week's tasks and what's waiting for approval.
+         */
         get: operations["today_api_today_get"];
         put?: never;
         post?: never;
@@ -682,6 +686,27 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** CalendarEvent */
+        CalendarEvent: {
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Location */
+            location?: string | null;
+            /** Description */
+            description?: string | null;
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Id */
@@ -798,6 +823,27 @@ export interface components {
             deferred: boolean;
             /** Detail */
             detail?: string | null;
+        };
+        /** EmailSummary */
+        EmailSummary: {
+            /** Id */
+            id: string;
+            /** Sender */
+            sender: string;
+            /** Subject */
+            subject: string;
+            /** Snippet */
+            snippet: string;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /**
+             * Unread
+             * @default true
+             */
+            unread: boolean;
         };
         /** ExportOut */
         ExportOut: {
@@ -1186,6 +1232,19 @@ export interface components {
              */
             created_at: string;
         };
+        /** TimeRange */
+        TimeRange: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+        };
         /** TodayOut */
         TodayOut: {
             /** Date */
@@ -1198,6 +1257,25 @@ export interface components {
             tasks: components["schemas"]["Task"][];
             /** Pending Proposals */
             pending_proposals: components["schemas"]["Proposal"][];
+            /**
+             * Events
+             * @default []
+             */
+            events: components["schemas"]["CalendarEvent"][];
+            /**
+             * Free Slots
+             * @default []
+             */
+            free_slots: components["schemas"]["TimeRange"][];
+            /**
+             * Unread
+             * @default []
+             */
+            unread: components["schemas"]["EmailSummary"][];
+            /** Calendar Error */
+            calendar_error?: string | null;
+            /** Mail Error */
+            mail_error?: string | null;
         };
         /** ToolInfo */
         ToolInfo: {

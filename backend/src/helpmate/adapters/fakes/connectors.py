@@ -20,11 +20,13 @@ class FakeMail:
         self.sent: list[EmailDraft] = []
 
     async def search(self, query: str, limit: int = 20) -> list[EmailSummary]:
-        words = [w.lower() for w in query.split() if ":" not in w]  # ignore Gmail operators
+        terms = query.lower().split()
+        words = [w for w in terms if ":" not in w]  # other Gmail operators are ignored
         hits = [
             m
             for m in self.inbox
             if all(w in f"{m.sender} {m.subject} {m.snippet}".lower() for w in words)
+            and (m.unread or "is:unread" not in terms)
         ]
         return sorted(hits, key=lambda m: m.received_at, reverse=True)[:limit]
 

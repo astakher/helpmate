@@ -6,8 +6,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from helpmate.domain.models import (
     AuditEntry,
+    CalendarEvent,
     ChatMessage,
     ChatSession,
+    EmailSummary,
     FieldDef,
     Folder,
     Horizon,
@@ -127,12 +129,24 @@ class PatchTaskIn(Body):
     due_at: AwareDatetime | None = None
 
 
+class TimeRange(Body):
+    start: AwareDatetime
+    end: AwareDatetime
+
+
 class TodayOut(Body):
     date: str  # local date, YYYY-MM-DD
     timezone: str
     reminders: list[Reminder]
     tasks: list[Task]
     pending_proposals: list[Proposal]
+    # The daily brief (added Oct 1, additive). A section that couldn't be read (e.g. Google's
+    # sign-in expired) is empty and says why in its *_error, so the rest of the brief still loads.
+    events: list[CalendarEvent] = []  # today's, all-day ones included
+    free_slots: list[TimeRange] = []  # from now to the end of the owner's day, >= 30 min
+    unread: list[EmailSummary] = []  # newest unread in the inbox, at most 5
+    calendar_error: str | None = None
+    mail_error: str | None = None
 
 
 # --- memory ---

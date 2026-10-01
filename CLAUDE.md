@@ -144,7 +144,12 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   overlaps as `Proposal.warnings`), and `list_tasks`. Router has 10 routes with topic-word guards
   (`llm_tools.routes_for`): seed 100% / held-out 100% / connectors 91% (23), args 100%. Live on the
   owner's account: ~2 s per read. Fakes (`adapters/fakes/connectors.py`) otherwise.
-- Next: Phase 8 Playwright E2E, midterm design doc + 3-min video ≈ Oct 26.
+- **Chat list + daily brief** (Oct 1): the Chat page has a sidebar (all chats, New chat, open,
+  delete); the Today page is a daily brief (today's events with "Now", free time left, newest
+  unread mail linking to Gmail, reminders, this week's tasks). `GET /api/today` reads Calendar and
+  Gmail in parallel with an 8 s limit each; a failing one shows its own error. Live: ~1.2 s.
+- Next: memory retrieval in answers (A stand-in), real login on (owner sets the password),
+  Phase 8 Playwright E2E, weekly plan / check-in, midterm design doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
@@ -154,8 +159,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   streaming; a per-device "voice language" choice (auto vs en); record real Chrome + iPhone clips as fixtures.
 - ~~[C] Phase 6 Web Push~~ Done Sep 30 on desktop. Left: test on a phone (after Phase 7); durable
   holds for quiet hours belong in B's job queue (today they're in memory).
-- ~~[C] Phase 7 Tailscale~~ Done Sep 30 with `serve` + iPhone. Left: test on Android; voice on the
-  iPhone; `funnel` only once B's 2FA and rate limiting exist.
+- ~~[C] Phase 7 Tailscale~~ Done Sep 30 with `serve` + iPhone; the owner tested the app on the
+  iPhone again Oct 1 (works). Left: test on Android; `funnel` only once B's 2FA and rate limiting
+  exist.
 - ~~[C] Add a React error boundary so a render error shows a message, not a blank page.~~ Done Sep 30
   (`web/src/ErrorBoundary.tsx`: around the pages, reset on navigation, and around the whole app).
 - [C] Energy per request: `nvidia-smi` power is N/A on the 1050 Ti Max-Q; plan a wall-meter/HWiNFO or

@@ -152,7 +152,7 @@ export function useToday() {
   return useQuery({
     queryKey: keys.today,
     queryFn: async () => unwrap(await api.GET("/api/today")),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000, // each refresh also reads Google Calendar + Gmail (plus on focus)
   });
 }
 

@@ -6,16 +6,20 @@ agent-initiated writes go through proposals.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable
 from datetime import UTC, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from helpmate.agent.free_time import free_slots
 from helpmate.api.deps import ContainerDep, current_user
 from helpmate.api.schemas.bodies import (
     CreateFolderIn,
     CreateItemIn,
     CreateTaskIn,
     PatchTaskIn,
+    TimeRange,
     TodayOut,
 )
 from helpmate.container import Container
@@ -140,10 +144,18 @@ async def cancel_reminder(reminder_id: str, container: ContainerDep) -> Reminder
 # --- today ---
 
 
+BRIEF_TIMEOUT_SECONDS = 8.0  # a slow Google answer mustn't hold up the whole Today page
+FREE_SLOT_MINUTES = 30
+UNREAD_SHOWN = 5
+
+
 @router.get("/today", response_model=TodayOut)
 async def today(container: ContainerDep) -> TodayOut:
+    """The Today board and daily brief: today's reminders and events, free time left, newest
+    unread mail, this week's tasks and what's waiting for approval."""
     tz = container.settings.tz
-    now_local = container.clock.now().astimezone(tz)
+    now = container.clock.now()
+    now_local = now.astimezone(tz)
     start = datetime.combine(now_local.date(), time.min, tzinfo=tz)
     end = datetime.combine(now_local.date() + timedelta(days=1), time.min, tzinfo=tz)
     reminders = [
@@ -151,13 +163,38 @@ async def today(container: ContainerDep) -> TodayOut:
         for r in await container.repos.reminders.find(ReminderStatus.SCHEDULED)
         if start <= r.due_at < end
     ]
+    (events, calendar_error), (unread, mail_error) = await asyncio.gather(
+        _section(container.calendar.list_events(start, end)),
+        _section(container.mail.search("in:inbox is:unread", UNREAD_SHOWN)),
+    )
+    hours = (container.settings.day_start_hour, container.settings.day_end_hour)
+    free = (
+        free_slots(events or [], max(start, now), end, FREE_SLOT_MINUTES, tz, hours)
+        if calendar_error is None
+        else []
+    )
     return TodayOut(
         date=now_local.date().isoformat(),
         timezone=container.settings.timezone,
         reminders=reminders,
         tasks=await container.repos.tasks.find(Horizon.WEEK, done=False),
         pending_proposals=await container.repos.proposals.find(ProposalStatus.PENDING),
+        events=events or [],
+        free_slots=[TimeRange(start=a, end=b) for a, b in free],
+        unread=(unread or [])[:UNREAD_SHOWN],
+        calendar_error=calendar_error,
+        mail_error=mail_error,
     )
+
+
+async def _section[T](read: Awaitable[T]) -> tuple[T | None, str | None]:
+    """One connector's part of the brief: its data, or why it couldn't be read."""
+    try:
+        return await asyncio.wait_for(read, BRIEF_TIMEOUT_SECONDS), None
+    except TimeoutError:
+        return None, "Google didn't answer in time. Try again in a moment."
+    except Exception as exc:  # e.g. GoogleNotConnected: its message says how to fix it
+        return None, str(exc) or exc.__class__.__name__
 
 
 async def _require_folder(container: Container, folder_id: str) -> Folder:

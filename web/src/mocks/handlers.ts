@@ -43,6 +43,7 @@ type Db = {
   voiceUploads: string[]; // Content-Type of each uploaded recording
   spoken: string[]; // every text sent to the mock TTS
   chats: Record<string, ChatMessage[]>; // session id -> stored messages, as the API keeps them
+  brief: Pick<TodayOut, "events" | "free_slots" | "unread" | "calendar_error" | "mail_error">;
 };
 
 export const db: Db = fresh();
@@ -89,6 +90,7 @@ function fresh(): Db {
     voiceUploads: [],
     spoken: [],
     chats: {},
+    brief: { events: [], free_slots: [], unread: [], calendar_error: null, mail_error: null },
   };
 }
 
@@ -460,6 +462,7 @@ export const handlers = [
       reminders: db.reminders.filter((r) => r.status === "scheduled"),
       tasks: db.tasks.filter((t) => t.horizon === "week" && !t.done),
       pending_proposals: db.proposals.filter((p) => p.status === "pending"),
+      ...db.brief,
     }),
   ),
 
