@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NavLink, Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
+import { App } from "../../App";
 import type { ChatMessage } from "../../api/types";
 import { db } from "../../mocks/handlers";
 import { renderWithProviders } from "../../test/render";
@@ -115,5 +116,18 @@ describe("the conversation outlives the chat page", () => {
     await screen.findByText(/\(mock\) You said: "hi"/);
     expect(localStorage.getItem(SESSION_KEY)).not.toBe(first);
     expect(Object.keys(db.chats)).toHaveLength(2);
+  });
+});
+
+describe("in the real app shell", () => {
+  it("keeps the chat after the Memory tab and back", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.type(await screen.findByRole("textbox", { name: "Message" }), "add task read chapter 3 this term{Enter}");
+    await screen.findByText(/Approve the card to go ahead/);
+    await user.click(screen.getByRole("link", { name: "Memory" }));
+    await screen.findByRole("heading", { level: 1, name: /Memory/ });
+    await user.click(screen.getByRole("link", { name: "Chat" }));
+    expect(await screen.findByText("add task read chapter 3 this term")).toBeInTheDocument();
   });
 });
