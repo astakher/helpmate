@@ -174,6 +174,22 @@ class ScheduleTaskIn(Body):
     minutes: int = Field(default=60, ge=15, le=480)
 
 
+# --- inbox triage (added Oct 1) ---
+
+
+class TriagedEmail(Body):
+    email: EmailSummary
+    category: Literal["reply", "fyi", "low"]
+    reason: str  # the model's or a rule's, with links and addresses removed
+    suspicious: bool  # has text that looks aimed at an AI; HelpMate ignored it
+    sorted_by: Literal["rules", "model"]
+
+
+class InboxOut(Body):
+    items: list[TriagedEmail]
+    error: str | None = None  # the mailbox couldn't be read (e.g. Google signed out)
+
+
 # --- memory ---
 
 

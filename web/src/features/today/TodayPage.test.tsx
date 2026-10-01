@@ -46,6 +46,7 @@ describe("the daily brief", () => {
           snippet: "",
           received_at: minutes(-5),
           unread: true,
+          labels: [],
         },
       ],
       calendar_error: null,
@@ -93,11 +94,14 @@ describe("the daily brief", () => {
 
   it("says so when the calendar isn't connected, and links nothing to Gmail on the fakes", async () => {
     db.brief.unread = [
-      { id: "m1", sender: "x@example.com", subject: "Hi", snippet: "", received_at: minutes(-5), unread: true },
+      { id: "m1", sender: "x@example.com", subject: "Hi", snippet: "", received_at: minutes(-5), unread: true, labels: [] },
     ];
     renderWithProviders(<TodayPage />);
     expect(await screen.findByText(/Google Calendar isn't connected/)).toBeInTheDocument();
-    expect(within(card("Unread mail")).getByText("x@example.com")).toBeInTheDocument();
-    expect(within(card("Unread mail")).queryByRole("link")).not.toBeInTheDocument();
+    const mail = card("Unread mail");
+    expect(within(mail).getByText("x@example.com")).toBeInTheDocument();
+    const links = within(mail).queryAllByRole("link");
+    expect(links.filter((a) => a.getAttribute("href")?.includes("mail.google.com"))).toHaveLength(0);
+    expect(within(mail).getByRole("link", { name: "Sort it: what needs a reply?" })).toHaveAttribute("href", "/inbox");
   });
 });

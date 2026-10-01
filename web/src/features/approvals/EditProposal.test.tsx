@@ -68,7 +68,14 @@ describe("Edit then approve", () => {
       tool: "send_email",
       title: "Email to jo@example.com",
       summary: "Running late",
-      args: { to: ["jo@example.com"], cc: [], subject: "Running late", body: "Hi Jo" },
+      args: {
+        to: ["jo@example.com"],
+        cc: [],
+        subject: "Running late",
+        body: "Hi Jo",
+        in_reply_to: "<m1@mail.example>", // read-only: no field, but kept through the edit
+        thread_id: "t1",
+      },
       risk: "external",
     };
     db.proposals.push({ ...email });
@@ -87,6 +94,13 @@ describe("Edit then approve", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent("Sent to jo@example.com, sam@example.com");
     const saved = db.proposals.find((p) => p.id === "p-email")!;
-    expect(saved.args).toMatchObject({ to: ["jo@example.com", "sam@example.com"], cc: [], body: "Hi Jo\nSee you at 5." });
+    expect(saved.args).toMatchObject({
+      to: ["jo@example.com", "sam@example.com"],
+      cc: [],
+      body: "Hi Jo\nSee you at 5.",
+      in_reply_to: "<m1@mail.example>",
+      thread_id: "t1",
+    });
+    expect(screen.queryByLabelText("Thread Id")).not.toBeInTheDocument();
   });
 });

@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from helpmate.domain.models import CalendarEvent, EmailDraft, EmailSummary, new_id
+from helpmate.domain.models import CalendarEvent, EmailDetail, EmailDraft, EmailSummary, new_id
 
 log = logging.getLogger("helpmate.connectors")
 
@@ -17,7 +17,23 @@ class FakeMail:
 
     def __init__(self, inbox: list[EmailSummary] | None = None) -> None:
         self.inbox = inbox or []
+        self.bodies: dict[str, str] = {}  # message id -> full text (default: its snippet)
         self.sent: list[EmailDraft] = []
+
+    async def read(self, message_id: str) -> EmailDetail | None:
+        summary = next((m for m in self.inbox if m.id == message_id), None)
+        if summary is None:
+            return None
+        return EmailDetail(
+            id=summary.id,
+            thread_id=f"thread-{summary.id}",
+            sender=summary.sender,
+            subject=summary.subject,
+            body=self.bodies.get(summary.id, summary.snippet),
+            message_id=f"<{summary.id}@fake.example>",
+            received_at=summary.received_at,
+            labels=summary.labels,
+        )
 
     async def search(self, query: str, limit: int = 20) -> list[EmailSummary]:
         terms = query.lower().split()

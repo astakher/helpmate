@@ -260,11 +260,17 @@ function Unread({
           );
         })}
       </ul>
-      {gmail && mail.length > 0 && (
+      {mail.length > 0 && (
         <p className="brief__more">
-          <a href="https://mail.google.com/mail/u/0/#search/is%3Aunread" target="_blank" rel="noopener noreferrer">
-            All unread in Gmail<span className="visually-hidden"> (opens Gmail)</span>
-          </a>
+          <Link to="/inbox">Sort it: what needs a reply?</Link>
+          {gmail && (
+            <>
+              {" · "}
+              <a href="https://mail.google.com/mail/u/0/#search/is%3Aunread" target="_blank" rel="noopener noreferrer">
+                All unread in Gmail<span className="visually-hidden"> (opens Gmail)</span>
+              </a>
+            </>
+          )}
         </p>
       )}
     </>

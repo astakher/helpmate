@@ -322,6 +322,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inbox */
+        get: operations["inbox_api_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inbox/{message_id}/draft-reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Reply
+         * @description A reply to the sender, written by the local model, as an approval card (nothing is sent
+         *     until the owner approves it, and the card shows the whole text).
+         */
+        post: operations["draft_reply_api_inbox__message_id__draft_reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/suggestions": {
         parameters: {
             query?: never;
@@ -899,6 +937,11 @@ export interface components {
              * @default true
              */
             unread: boolean;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
         };
         /** ExportOut */
         ExportOut: {
@@ -1001,6 +1044,13 @@ export interface components {
          * @enum {string}
          */
         Horizon: "week" | "term" | "year" | "someday";
+        /** InboxOut */
+        InboxOut: {
+            /** Items */
+            items: components["schemas"]["TriagedEmail"][];
+            /** Error */
+            error?: string | null;
+        };
         /** Item */
         Item: {
             /** Id */
@@ -1368,6 +1418,24 @@ export interface components {
             duration_ms: number;
             /** Stt Ms */
             stt_ms: number;
+        };
+        /** TriagedEmail */
+        TriagedEmail: {
+            email: components["schemas"]["EmailSummary"];
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "reply" | "fyi" | "low";
+            /** Reason */
+            reason: string;
+            /** Suspicious */
+            suspicious: boolean;
+            /**
+             * Sorted By
+             * @enum {string}
+             */
+            sorted_by: "rules" | "model";
         };
         /** UnsubscribeIn */
         UnsubscribeIn: {
@@ -2127,6 +2195,57 @@ export interface operations {
                 "application/json": components["schemas"]["ScheduleTaskIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inbox_api_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxOut"];
+                };
+            };
+        };
+    };
+    draft_reply_api_inbox__message_id__draft_reply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {

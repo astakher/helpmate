@@ -623,8 +623,28 @@ a {
 /* ---------- Today: the daily brief ---------- */
 
 .main:has(.today),
-.main:has(.week) {
+.main:has(.week),
+.main:has(.inbox) {
   max-width: 1100px;
+}
+
+.inbox__item {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.inbox__reason {
+  font-size: 0.85rem;
+}
+
+.inbox__warning {
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .week__free {

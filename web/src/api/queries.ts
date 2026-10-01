@@ -25,6 +25,7 @@ export const keys = {
   notificationSettings: ["settings", "notifications"] as const,
   chats: ["chat", "sessions"] as const,
   week: ["week"] as const,
+  inbox: ["inbox"] as const,
 };
 
 function useInvalidate() {
@@ -162,6 +163,27 @@ export function useWeek() {
   return useQuery({
     queryKey: keys.week,
     queryFn: async () => unwrap(await api.GET("/api/week")),
+  });
+}
+
+/** Unread mail sorted by the local model (needs a reply / FYI / low). Slow-ish the first time
+ * (~1 s per email), cached on the server after that, so no polling here. */
+export function useInbox() {
+  return useQuery({
+    queryKey: keys.inbox,
+    queryFn: async () => unwrap(await api.GET("/api/inbox")),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** A reply drafted by the local model, as a send_email approval card (to the sender only). */
+export function useDraftReply() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (messageId: string) =>
+      unwrap(await api.POST("/api/inbox/{message_id}/draft-reply", { params: { path: { message_id: messageId } } })),
+    onSuccess: () => invalidate(["proposals"]),
   });
 }
 

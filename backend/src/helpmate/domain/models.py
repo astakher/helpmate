@@ -344,7 +344,8 @@ class EmailDraft(DomainModel):
     subject: str
     body: str
     cc: list[str] = []
-    in_reply_to: str | None = None
+    in_reply_to: str | None = None  # the replied-to message's Message-ID header
+    thread_id: str | None = None  # the provider's thread, so a reply lands in it. Oct 1, additive.
 
 
 class EmailSummary(DomainModel):
@@ -354,6 +355,21 @@ class EmailSummary(DomainModel):
     snippet: str
     received_at: AwareDatetime
     unread: bool = True
+    # the provider's labels, e.g. Gmail's CATEGORY_PROMOTIONS (inbox triage). Oct 1, additive.
+    labels: list[str] = []
+
+
+class EmailDetail(DomainModel):
+    """One message, read in full, for drafting a reply. Its text is untrusted (inbox triage)."""
+
+    id: str
+    thread_id: str | None = None
+    sender: str  # the From header, e.g. "Sam Lee <sam@example.com>"
+    subject: str
+    body: str  # plain text, truncated
+    message_id: str | None = None  # the RFC 5322 Message-ID header, for In-Reply-To
+    received_at: AwareDatetime
+    labels: list[str] = []
 
 
 class CalendarEvent(DomainModel):

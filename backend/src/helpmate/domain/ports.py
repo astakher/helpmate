@@ -21,6 +21,7 @@ from helpmate.domain.models import (
     ChatSession,
     Delivery,
     DeliveryResult,
+    EmailDetail,
     EmailDraft,
     EmailSummary,
     Folder,
@@ -164,6 +165,10 @@ class AuthPort(Adapter, Protocol):
 
 class MailPort(Adapter, Protocol):
     async def search(self, query: str, limit: int = 20) -> list[EmailSummary]: ...
+
+    async def read(self, message_id: str) -> EmailDetail | None:
+        """The whole message (plain text, truncated); None if it doesn't exist. Added Oct 1."""
+        ...
 
     async def send(self, draft: EmailDraft) -> str: ...
 

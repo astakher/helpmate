@@ -27,7 +27,8 @@ export function EditProposalForm({
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const args: Record<string, unknown> = {};
+    // start from the proposal's args, so values without a field (read-only ones) are kept
+    const args: Record<string, unknown> = { ...proposal.args };
     for (const f of fields) {
       const raw = form.get(f.name);
       if (f.kind === "bool") args[f.name] = raw === "on";

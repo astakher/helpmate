@@ -17,6 +17,7 @@ import type {
   Reminder,
   SubscriptionIn,
   Task,
+  InboxOut,
   TodayOut,
   ToolInfo,
   WeekOut,
@@ -46,6 +47,7 @@ type Db = {
   chats: Record<string, ChatMessage[]>; // session id -> stored messages, as the API keeps them
   brief: Pick<TodayOut, "events" | "free_slots" | "unread" | "calendar_error" | "mail_error">;
   week: { days: WeekOut["days"] | null; calendar_error: string | null; full: boolean }; // days null: 7 empty days from today
+  inbox: InboxOut;
 };
 
 export const db: Db = fresh();
@@ -94,6 +96,7 @@ function fresh(): Db {
     chats: {},
     brief: { events: [], free_slots: [], unread: [], calendar_error: null, mail_error: null },
     week: { days: null, calendar_error: null, full: false },
+    inbox: { items: [], error: null },
   };
 }
 
@@ -144,6 +147,8 @@ export const TOOLS: ToolInfo[] = [
         cc: { type: "array", items: { type: "string" }, title: "Cc" },
         subject: { type: "string", title: "Subject" },
         body: { type: "string", format: "multiline", title: "Body" },
+        in_reply_to: { anyOf: [{ type: "string" }, { type: "null" }], readOnly: true, title: "In Reply To" },
+        thread_id: { anyOf: [{ type: "string" }, { type: "null" }], readOnly: true, title: "Thread Id" },
       },
     },
   },
@@ -457,6 +462,31 @@ export const handlers = [
     if (!reminder) return notFound("reminder");
     reminder.status = "cancelled";
     return HttpResponse.json(reminder);
+  }),
+  http.get("*/api/inbox", () => HttpResponse.json<InboxOut>(db.inbox)),
+  http.post<{ id: string }>("*/api/inbox/:id/draft-reply", ({ params }) => {
+    const item = db.inbox.items.find((i) => i.email.id === params.id);
+    if (!item) return notFound("message");
+    const to = item.email.sender.match(/<([^>]+)>/)?.[1] ?? item.email.sender;
+    const body = "Hi,\n\nThanks for your email. [your reply]\n\nThanks,";
+    const subject = `Re: ${item.email.subject}`;
+    const proposal: Proposal = {
+      id: newId(),
+      session_id: null,
+      tool: "send_email",
+      title: `Email to ${to}`,
+      summary: subject,
+      args: { to: [to], cc: [], subject, body, in_reply_to: `<${item.email.id}@mock>`, thread_id: `t-${item.email.id}` },
+      preview: `To: ${to}\nSubject: ${subject}\n\n${body}`,
+      warnings: [],
+      risk: "external",
+      status: "pending",
+      created_at: nowIso(),
+      decided_at: null,
+      result: null,
+    };
+    db.proposals.unshift(proposal);
+    return HttpResponse.json(proposal, { status: 201 });
   }),
   http.get("*/api/week", () => {
     const day = (offset: number) => {

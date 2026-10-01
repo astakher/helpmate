@@ -165,3 +165,76 @@ async def test_calendar_create_sends_the_owners_timezone():
     assert sent["start"] == {"dateTime": "2026-10-06T15:00:00-04:00", "timeZone": TZ.key}
     assert sent["location"] == "Main St"
     assert created.id == "new" and created.title == "Dentist"
+
+
+def _b64(text: str) -> str:
+    return base64.urlsafe_b64encode(text.encode()).decode().rstrip("=")
+
+
+async def test_gmail_read_returns_plain_text_and_the_headers_a_reply_needs():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/gone"):
+            return httpx.Response(404, json={"error": {"message": "Not Found"}})
+        assert request.url.params["format"] == "full"
+        return httpx.Response(
+            200,
+            json={
+                "id": "m1",
+                "threadId": "t1",
+                "internalDate": "1791205200000",
+                "labelIds": ["INBOX", "UNREAD"],
+                "payload": {
+                    "mimeType": "multipart/alternative",
+                    "headers": [
+                        {"name": "From", "value": "Sam <sam@example.com>"},
+                        {"name": "Subject", "value": "Notes"},
+                        {"name": "Message-ID", "value": "<abc@mail.example>"},
+                    ],
+                    "parts": [
+                        {"mimeType": "text/html", "body": {"data": _b64("<p>Hi <b>there</b></p>")}},
+                        {"mimeType": "text/plain", "body": {"data": _b64("Hi there\n")}},
+                    ],
+                },
+            },
+        )
+
+    google, _ = api(handler)
+    detail = await GmailMail(google).read("m1")
+    assert (detail.body, detail.message_id, detail.thread_id) == (
+        "Hi there",
+        "<abc@mail.example>",
+        "t1",
+    )
+    assert await GmailMail(google).read("gone") is None
+
+
+async def test_gmail_html_only_mail_becomes_text_and_replies_stay_in_their_thread():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            captured.update(json.loads(request.content))
+            return httpx.Response(200, json={"id": "sent"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "m2",
+                "internalDate": "1791205200000",
+                "payload": {
+                    "mimeType": "text/html",
+                    "headers": [{"name": "From", "value": "a@b.example"}],
+                    "body": {"data": _b64("<style>p{}</style><p>Meeting &amp; notes</p>")},
+                },
+            },
+        )
+
+    google, _ = api(handler)
+    assert (await GmailMail(google).read("m2")).body == "Meeting & notes"
+    await GmailMail(google).send(
+        EmailDraft(
+            to=["a@b.example"], subject="Re: x", body="ok", in_reply_to="<m@x>", thread_id="t9"
+        )
+    )
+    assert captured["threadId"] == "t9"
+    sent = email.message_from_bytes(base64.urlsafe_b64decode(captured["raw"]))
+    assert sent["In-Reply-To"] == "<m@x>"

@@ -160,6 +160,14 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   "2 tasks left this week. Tomorrow: 2 events (first at 09:30), 1 reminder." Checked end to end
   on the all-fakes test instance (`start_test_instance.ps1` pattern: port 8010, every adapter
   fake, dev login), never on the owner's data.
+- **Inbox triage + injection defences** (Oct 1; `agent/triage.py`, `/inbox`): unread mail sorted
+  into needs a reply / FYI / low (Gmail categories and no-reply senders by rule, the rest by the
+  local model with no tools and a forced JSON answer); "Draft a reply" → a send_email card to the
+  sender only (recipient, subject, threading set by code from the headers). Sentences aimed at
+  an AI are cut out before the model sees the email (`quarantine`), drafts lose links and other
+  addresses, the owner is warned. `helpmate-injection-bench`: prompt-only defence followed 3/7
+  dictated replies; with quarantine 7/7 clean, 8/10 sorted on content (the 2 misses are
+  phishing that reads as "action needed", and both are flagged).
 - **Memory is used in answers** (Oct 1; stand-in for A, `memory/retrieval.py`): approved facts are
   embedded locally (nomic-embed-text on the CPU, llama stays 100% GPU) and the ≤ 3 that match a
   message (score ≥ 0.55 and within 0.08 of the best) go into the reply/tool prompt; the chat shows

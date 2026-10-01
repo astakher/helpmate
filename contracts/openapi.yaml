@@ -560,6 +560,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/inbox:
+    get:
+      tags:
+      - inbox
+      summary: Inbox
+      operationId: inbox_api_inbox_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxOut'
+  /api/inbox/{message_id}/draft-reply:
+    post:
+      tags:
+      - inbox
+      summary: Draft Reply
+      description: 'A reply to the sender, written by the local model, as an approval card (nothing is
+        sent
+
+        until the owner approves it, and the card shows the whole text).'
+      operationId: draft_reply_api_inbox__message_id__draft_reply_post
+      parameters:
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Message Id
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proposal'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/memory/suggestions:
     get:
       tags:
@@ -1443,6 +1486,12 @@ components:
           type: boolean
           title: Unread
           default: true
+        labels:
+          items:
+            type: string
+          type: array
+          title: Labels
+          default: []
       additionalProperties: false
       type: object
       required:
@@ -1643,6 +1692,23 @@ components:
       - year
       - someday
       title: Horizon
+    InboxOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TriagedEmail'
+          type: array
+          title: Items
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      additionalProperties: false
+      type: object
+      required:
+      - items
+      title: InboxOut
     Item:
       properties:
         id:
@@ -2277,6 +2343,38 @@ components:
       - duration_ms
       - stt_ms
       title: Transcript
+    TriagedEmail:
+      properties:
+        email:
+          $ref: '#/components/schemas/EmailSummary'
+        category:
+          type: string
+          enum:
+          - reply
+          - fyi
+          - low
+          title: Category
+        reason:
+          type: string
+          title: Reason
+        suspicious:
+          type: boolean
+          title: Suspicious
+        sorted_by:
+          type: string
+          enum:
+          - rules
+          - model
+          title: Sorted By
+      additionalProperties: false
+      type: object
+      required:
+      - email
+      - category
+      - reason
+      - suspicious
+      - sorted_by
+      title: TriagedEmail
     UnsubscribeIn:
       properties:
         endpoint:

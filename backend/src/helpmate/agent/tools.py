@@ -275,10 +275,24 @@ class SendEmailArgs(BaseModel):
     cc: list[Address] = Field(default_factory=list, max_length=10)
     subject: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20000, json_schema_extra={"format": "multiline"})
+    # set by code for replies (inbox triage), never by the model; the Edit form keeps them as-is
+    in_reply_to: str | None = Field(
+        default=None, max_length=998, json_schema_extra={"readOnly": True}
+    )
+    thread_id: str | None = Field(
+        default=None, max_length=200, json_schema_extra={"readOnly": True}
+    )
 
 
 async def _send_email(args: SendEmailArgs, deps: ToolDeps) -> str:
-    draft = EmailDraft(to=args.to, cc=args.cc, subject=args.subject, body=args.body)
+    draft = EmailDraft(
+        to=args.to,
+        cc=args.cc,
+        subject=args.subject,
+        body=args.body,
+        in_reply_to=args.in_reply_to,
+        thread_id=args.thread_id,
+    )
     await deps.mail.send(draft)
     return f"Sent to {', '.join(args.to)}."
 

@@ -26,6 +26,7 @@ from helpmate.adapters.speech_http import HttpSTT, HttpTTS
 from helpmate.adapters.webpush_notifier import WebPushNotifier
 from helpmate.agent.policy import PolicyEngine
 from helpmate.agent.tools import ToolDeps, ToolRegistry, default_registry
+from helpmate.agent.triage import Triage
 from helpmate.domain.ports import (
     Adapter,
     AgentPort,
@@ -85,6 +86,7 @@ class Container:
     tools: ToolRegistry
     policy: PolicyEngine
     agent: AgentPort
+    triage: Triage
     _http_clients: list[httpx.AsyncClient] = field(default_factory=list)
 
     def adapters(self) -> dict[str, Adapter]:
@@ -286,5 +288,6 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         tools=tools,
         policy=policy,
         agent=agent,
+        triage=Triage(mail, llm),
         _http_clients=http_clients,
     )

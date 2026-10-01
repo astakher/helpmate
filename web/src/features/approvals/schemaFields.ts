@@ -9,6 +9,7 @@ type JsonSchema = {
   properties?: Record<string, JsonSchema>;
   required?: string[];
   $defs?: Record<string, JsonSchema>;
+  readOnly?: boolean;
 };
 
 export type SchemaField = {
@@ -24,7 +25,8 @@ export type SchemaField = {
  * gets an Edit form without UI changes. Handles what pydantic emits: $ref enums, Optional (anyOf
  * with null), date-time strings, numbers and booleans, plus lists of strings (edited as a
  * comma-separated line, e.g. email recipients) and `format: "multiline"` (a textarea, e.g. an
- * email body).
+ * email body). `readOnly` properties (e.g. a reply's thread id, set by code) get no field; the
+ * form keeps their value as it is.
  */
 export function schemaFields(parameters: Record<string, unknown>): SchemaField[] {
   const schema = parameters as JsonSchema;
@@ -34,7 +36,8 @@ export function schemaFields(parameters: Record<string, unknown>): SchemaField[]
     if (nonNull?.length === 1) return { ...resolve(nonNull[0]), title: s.title ?? nonNull[0].title };
     return s;
   };
-  return Object.entries(schema.properties ?? {}).map(([name, raw]) => {
+  const editable = Object.entries(schema.properties ?? {}).filter(([, raw]) => !raw.readOnly);
+  return editable.map(([name, raw]) => {
     const s = resolve(raw);
     const label = raw.title ?? s.title ?? name;
     const required = schema.required?.includes(name) ?? false;
