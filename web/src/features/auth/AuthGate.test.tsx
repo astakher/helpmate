@@ -37,4 +37,22 @@ describe("AuthGate", () => {
     expect(await screen.findByText("private stuff")).toBeInTheDocument();
     expect(screen.queryByText("private stuff")).toBeInTheDocument();
   });
+
+  it("can show the password while typing it, and hide it again", async () => {
+    db.auth.signedIn = false;
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<AuthGate>private stuff</AuthGate>);
+    const password = await screen.findByLabelText("Password");
+    await user.type(password, "correct horse");
+    expect(password).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("correct horse");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // the toggle doesn't submit
+    expect(await axeViolations(container)).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
 });

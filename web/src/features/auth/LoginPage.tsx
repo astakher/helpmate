@@ -9,6 +9,7 @@ export function LoginPage() {
   const login = useLogin();
   const verify = useVerifyMfa();
   const [challenge, setChallenge] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false); // "Show" in the field, to check typing
 
   async function onPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,10 +41,29 @@ export function LoginPage() {
             Username
             <input name="username" autoComplete="username" required />
           </label>
-          <label>
-            Password
-            <input name="password" type="password" autoComplete="current-password" required />
-          </label>
+          <div className="field">
+            <label htmlFor="login-password">Password</label>
+            <div className="password-field">
+              <input
+                id="login-password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+              />
+              <button
+                type="button"
+                className="password-field__toggle"
+                aria-controls="login-password"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((shown) => !shown)}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
           {login.isError && (
             <p className="error" role="alert">
               Wrong username or password.

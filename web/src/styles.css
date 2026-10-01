@@ -755,6 +755,44 @@ a {
   text-align: center;
 }
 
+.login .field > label {
+  font-weight: 600;
+}
+
+/* the password box with its Show/Hide button inside, on the right */
+.password-field {
+  position: relative;
+  display: flex;
+}
+
+.password-field input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 4.5rem;
+}
+
+.password-field__toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 0.6rem;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.password-field__toggle:hover {
+  background: var(--surface-2);
+}
+
 .form {
   display: grid;
   gap: 0.9rem;

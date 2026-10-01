@@ -193,7 +193,12 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   to Postgres (encrypted), publishes the OAuth app (Testing mode = 7-day sign-ins), and adds reply
   threading (`EmailDraft.in_reply_to`) and ICS import.
 - [B] Real login: stand-in `HELPMATE_AUTH=totp` works (Sep 30; `adapters/totp_auth.py`, password via
-  `scripts/set_password.py`). B moves users/secrets/sessions to Postgres and adds recovery codes.
-  With `dev` auth 2FA can't be on and `tailscale funnel` stays off. See plan §9 item 11.
+  `scripts/set_password.py`). **On for the owner's XPS since Oct 1** (username in
+  `HELPMATE_OWNER_USERNAME`; every endpoint but `/api/health` answers 401 without a session; the
+  cookie is Secure over Tailscale because `tailscale serve` sends `X-Forwarded-Proto: https` from
+  127.0.0.1, which uvicorn trusts). Sessions live in the API's memory, so a restart signs every
+  device out. Live checks against the running app now need the owner to sign in: use the fakes
+  or ask, never weaken auth for testing. B moves users/secrets/sessions to Postgres and adds
+  recovery codes. `tailscale funnel` stays off until rate limiting exists. See plan §9 item 11.
 - [B] Recurring reminders: stand-in in `worker/recurrence.py` + `DevScheduler` (Sep 30, DST-tested);
   B's Postgres job queue must reuse `next_occurrence` or pass `tests/test_recurrence.py`.
