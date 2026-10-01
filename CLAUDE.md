@@ -94,6 +94,10 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   caches it): "still broken" reports after a fix → Ctrl+Shift+R first. Check against a fresh
   profile with real Chrome: `uv run --no-project --with playwright python <script>` using
   `p.chromium.launch(channel="chrome")` (no browser download needed).
+- Memory-search thresholds are model-specific: 0.55 / margin 0.08 are for nomic-embed-text (re-run
+  `helpmate-memory-bench` if the model changes); bag-of-words `FakeEmbeddings` need ~0.3 in tests.
+- `uv sync` (and `uv run` after a pyproject change) fails while the API runs (`helpmate-api.exe` is
+  locked): stop the API first, or use `uv run --no-sync`.
 - The benchmark must not send `keep_alive`: its "10m" overrode OLLAMA_KEEP_ALIVE=30m, so the app's
   next message after a run paid a ~5 s model reload.
 
@@ -148,8 +152,14 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   delete); the Today page is a daily brief (today's events with "Now", free time left, newest
   unread mail linking to Gmail, reminders, this week's tasks). `GET /api/today` reads Calendar and
   Gmail in parallel with an 8 s limit each; a failing one shows its own error. Live: ~1.2 s.
-- Next: memory retrieval in answers (A stand-in), real login on (owner sets the password),
-  Phase 8 Playwright E2E, weekly plan / check-in, midterm design doc + 3-min video ≈ Oct 26.
+- **Memory is used in answers** (Oct 1; stand-in for A, `memory/retrieval.py`): approved facts are
+  embedded locally (nomic-embed-text on the CPU, llama stays 100% GPU) and the ≤ 3 that match a
+  message (score ≥ 0.55 and within 0.08 of the best) go into the reply/tool prompt; the chat shows
+  "From memory: …"; a saved email address counts as given. "What do you remember about me?" →
+  `list_memory`. recall@5 = 1.00 on 20 seeded facts (`helpmate-memory-bench`). Router: 11 routes,
+  seed 100% / held-out 100% / connectors 92% (26), args 100%. Live: answers in ~1.0–1.3 s.
+- Next: real login on (owner sets the password), Phase 8 Playwright E2E, weekly plan / check-in,
+  midterm design doc + 3-min video ≈ Oct 26.
 - `main` is protected (PR + review + 3 CI checks); owner can bypass while teammates aren't added yet.
 
 ## Backlog (Part C first; the full gap list with fixes is `docs/plan.md` §9)
@@ -171,9 +181,11 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   skip the model when `intent_parser` already matches (cards 2–3 s → instant); grow the golden set
   to ≥ 60; try `qwen3:4b-instruct`.
   (Done as stand-ins: benchmark `rem-at` fix, thinking-model TTFT, held-out set, `--pipeline`.)
-- [A] (stand-in) "permitted" permission tier (empty by default); golden set ≥ 60 (now 49 over three
-  sets), recall@5, 10 prompt-injection cases (email bodies are the obvious source); count extra or
-  failed tool calls in the benchmark. (Done: calendar conflict + free-time tools.)
+- [A] (stand-in) "permitted" permission tier (empty by default); golden set ≥ 60 (now 52 over three
+  sets), 10 prompt-injection cases (email bodies are the obvious source); count extra or failed tool
+  calls in the benchmark. (Done: calendar conflict + free-time tools; memory search + recall@5.)
+- [A/B] Memory search keeps its vectors in process (re-embedded after a restart, ~35 ms per fact);
+  B can move them to a pgvector column without changing `MemoryRetriever`'s interface.
 - [B] Postgres: stand-in done (all repos, Alembic 0001, contract suite green). B owns the schema from
   here (FKs, retention, backups + restore drill); the durable job queue (`scheduler=pg`, SKIP LOCKED)
   is still unbuilt.

@@ -83,16 +83,22 @@ class OllamaLLM:
 class OllamaEmbeddings:
     is_fake = False
 
-    def __init__(self, client: httpx.AsyncClient, model: str, dimensions: int = 768) -> None:
+    def __init__(
+        self, client: httpx.AsyncClient, model: str, dimensions: int = 768, on_cpu: bool = False
+    ) -> None:
         self._client = client
         self._model = model
         self.dimensions = dimensions
         self.name = f"ollama:{model}"
+        # num_gpu 0 keeps the embedding model off the GPU, so on a 4 GB card it never pushes the
+        # chat model's layers onto the CPU. Measured: ~30 ms per query on the i7-8750H.
+        self._options = {"num_gpu": 0} if on_cpu else {}
 
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        response = await self._client.post(
-            "/api/embed", json={"model": self._model, "input": list(texts)}
-        )
+        body: dict[str, Any] = {"model": self._model, "input": list(texts)}
+        if self._options:
+            body["options"] = self._options
+        response = await self._client.post("/api/embed", json=body)
         response.raise_for_status()
         return response.json()["embeddings"]
 

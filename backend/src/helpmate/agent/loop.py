@@ -18,11 +18,15 @@ of a routing or tool call (both see only the owner's current message); later pla
 see them in chat history, but those have no tools. So text inside an email can't trigger a tool
 call (prompt injection), and every write still needs an approved card anyway.
 
-"remember that ..." files a memory suggestion, as in the ScriptedAgent.
+"remember that ..." files a memory suggestion, as in the ScriptedAgent. Approved facts come back
+through memory search (memory/retrieval.py): the few that match the message go into the reply or
+tool prompt, the chat shows "From memory: …", and an email address from memory counts as given
+by the owner. "What do you remember about me?" routes to list_memory.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from collections.abc import AsyncIterator, Sequence
@@ -51,6 +55,7 @@ from helpmate.domain.models import (
     new_id,
 )
 from helpmate.domain.ports import ChatRepo, Clock, LLMPort, MemoryRepo
+from helpmate.memory.retrieval import MemoryRetriever, ScoredFact
 
 HISTORY_MESSAGES = 6  # earlier turns given to plain replies (routing and tool calls are 1-turn)
 _EXAMPLES = {  # shown when a request couldn't be turned into a tool call
@@ -86,6 +91,7 @@ class LoopAgent:
         chat: ChatRepo,
         clock: Clock,
         tz: ZoneInfo,
+        recall: MemoryRetriever | None = None,
     ) -> None:
         self._policy = policy
         self._llm = llm
@@ -93,6 +99,7 @@ class LoopAgent:
         self._chat = chat
         self._clock = clock
         self._tz = tz
+        self._recall = recall
 
     async def run(self, session_id: str, text: str, source: Source) -> AsyncIterator[ChatEvent]:
         started = time.perf_counter()
@@ -124,11 +131,16 @@ class LoopAgent:
             return
 
         now = self._clock.now()
-        route = await self._route(text)
+        # memory search (~30 ms) runs while the router decides, so it costs no extra time
+        route, recalled = await asyncio.gather(self._route(text), self._relevant_facts(text))
+        facts = [] if route == "list_memory" else [s.fact.text for s in recalled]
+        if facts:  # show the owner what was used, so a stale fact is easy to spot and fix
+            yield ToolResult(call_id=new_id(), ok=True, summary="From memory: " + "; ".join(facts))
+        said = "\n".join([text, *facts])  # an address the owner saved counts as one they gave
 
         if route == "reply":
             messages = [
-                LLMMessage(role="system", content=llm_tools.reply_prompt(now, self._tz)),
+                LLMMessage(role="system", content=llm_tools.reply_prompt(now, self._tz, facts)),
                 *await self._history(session_id, text),
                 LLMMessage(role="user", content=text),
             ]
@@ -144,7 +156,7 @@ class LoopAgent:
 
         specs = [s for s in llm_tools.specs(self._policy.tools) if s.name == route]
         messages = [
-            LLMMessage(role="system", content=llm_tools.tool_prompt(route, now, self._tz)),
+            LLMMessage(role="system", content=llm_tools.tool_prompt(route, now, self._tz, facts)),
             LLMMessage(role="user", content=text),
         ]
         reply = await self._collect(messages, specs)
@@ -155,7 +167,7 @@ class LoopAgent:
             return
 
         call = reply.calls[0]
-        args, error = self._resolve(call, now, text)
+        args, error = self._resolve(call, now, said)
         if isinstance(error, llm_tools.NeedsOwner):  # only the owner can fix it: ask them
             yield ToolResult(call_id=call.id, ok=False, summary=f"{call.name}: needs your input")
             async for event in say(str(error)):
@@ -174,7 +186,7 @@ class LoopAgent:
             retry = await self._collect(messages, specs)
             if retry.calls:
                 call = retry.calls[0]
-                args, error = self._resolve(call, now, text)
+                args, error = self._resolve(call, now, said)
 
         if args is None:
             yield ToolResult(call_id=call.id, ok=False, summary=str(error or "invalid arguments"))
@@ -203,6 +215,9 @@ class LoopAgent:
         async for event in say(answer):
             yield event
         yield MessageDone(message_id=new_id(), ttft_ms=_ms(started, first_token), tokens=tokens)
+
+    async def _relevant_facts(self, text: str) -> list[ScoredFact]:
+        return await self._recall.relevant(text) if self._recall is not None else []
 
     async def _route(self, text: str) -> str:
         routes = llm_tools.routes_for(text)  # e.g. no reminder routes without a "remind" word

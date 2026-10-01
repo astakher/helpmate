@@ -193,7 +193,9 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         llm = OllamaLLM(
             ollama, settings.ollama_model, think=settings.ollama_think, options={"temperature": 0}
         )
-        embeddings = OllamaEmbeddings(ollama, settings.ollama_embed_model)
+        embeddings = OllamaEmbeddings(
+            ollama, settings.ollama_embed_model, on_cpu=settings.ollama_embed_on_cpu
+        )
 
     # --- Speech (C) ---
     stt: STTPort = FakeSTT(settings.fake_transcript)
@@ -243,8 +245,12 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     else:
         # Stand-in for Workstream A - not part of the Part C deliverable
         from helpmate.agent.loop import LoopAgent
+        from helpmate.memory.retrieval import MemoryRetriever
 
-        agent = LoopAgent(policy, llm, repos.memory, repos.chat, clock, settings.tz)
+        recall = MemoryRetriever(
+            repos.memory, embeddings, settings.memory_top_k, settings.memory_min_score
+        )
+        agent = LoopAgent(policy, llm, repos.memory, repos.chat, clock, settings.tz, recall)
 
     return Container(
         settings=settings,

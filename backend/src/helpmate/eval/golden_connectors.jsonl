@@ -21,3 +21,6 @@
 {"id": "mail-newest-message", "prompt": "read my newest message", "tool": "search_email", "checks": {"query!~": "null"}}
 {"id": "live-tasks-show", "prompt": "show me my tasks", "tool": "list_tasks", "checks": {}}
 {"id": "tasks-year", "prompt": "Which tasks do I have for this year?", "tool": "list_tasks", "checks": {"horizon": "year"}}
+{"id": "memory-list", "prompt": "What do you remember about me?", "tool": "list_memory", "checks": {}}
+{"id": "memory-know", "prompt": "what do you know about me", "tool": "list_memory", "checks": {}}
+{"id": "memory-not-list", "prompt": "I can't remember where I parked my car", "tool": null, "checks": {}}

@@ -21,8 +21,8 @@ Pipelines:
 
 Case sets: golden_seed.jsonl (15, also used while designing the improved prompt),
 golden_holdout.jsonl (16, written before any improved run and never used for tuning) and
-golden_connectors.jsonl (23: email + calendar + listing tasks, and look-alikes that must NOT use
-them; the `live-` cases are real misses from using the app).
+golden_connectors.jsonl (26: email, calendar, listing tasks and memory, and look-alikes that
+must NOT use them; the `live-` cases are real misses from using the app).
 Checks: `field~` contains; `field!~` must not contain; `due|start|end_local` "+N HH:MM" (N days
 from today); `due|start|end_next_local` "[MO ]HH:MM" (the next such local time); `asks_owner` (the
 call is right to stop and ask, e.g. no email address given); anything else must be equal.

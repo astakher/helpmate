@@ -105,6 +105,7 @@ async def test_tools_endpoint_exposes_argument_schemas(client):
     tools = {t["name"]: t for t in (await client.get("/api/tools")).json()}
     assert set(tools) == {
         "list_tasks",
+        "list_memory",
         "create_reminder",
         "create_task",
         "list_reminders",

@@ -53,7 +53,12 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "llama3.2:3b"
     ollama_embed_model: str = "nomic-embed-text"
+    ollama_embed_on_cpu: bool = True  # keep the 4 GB GPU for the chat model
     ollama_think: bool | None = None  # set False for qwen3 to skip "thinking" output
+
+    # --- Memory search (agent answers use the owner's approved facts) ---
+    memory_top_k: int = 3
+    memory_min_score: float = 0.55  # cosine; tuned for nomic-embed-text (eval/memory_recall.py)
 
     # --- Speech service ---
     speech_url: str = "http://127.0.0.1:8001"

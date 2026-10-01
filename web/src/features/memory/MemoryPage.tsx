@@ -26,7 +26,9 @@ export function MemoryPage() {
     <section className="page" aria-labelledby="memory-heading">
       <h1 id="memory-heading">Memory</h1>
       <p className="muted">
-        HelpMate only remembers what you approve. Everything here stays on your computer.
+        HelpMate only remembers what you approve. Everything here stays on your computer. When a fact
+        matters for what you ask, HelpMate uses it and the chat shows "From memory: …"; edit or delete
+        it here if it's out of date.
       </p>
 
       <h2>Suggested</h2>

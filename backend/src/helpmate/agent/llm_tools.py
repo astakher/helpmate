@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -120,6 +121,7 @@ _DESCRIPTIONS = {
     "list_reminders": "Show the owner's upcoming reminders, only when they ask what reminders "
     "they have.",
     "list_tasks": "Show the owner's open tasks, only when they ask what tasks they have.",
+    "list_memory": "Show everything the owner asked you to remember.",
     "search_email": "Search the owner's email when they ask about their mail or inbox.",
     "send_email": "Write an email the owner asked for. It's sent only after they approve it.",
     "list_events": "Show what's on the owner's calendar for a day or period.",
@@ -197,6 +199,7 @@ term, year or someday.
 Owner: add book the dentist to this term
 -> create_task(title="book the dentist", horizon="term")""",
     "list_reminders": "Call list_reminders.",
+    "list_memory": "Call list_memory.",
     "list_tasks": """Call list_tasks. Set `horizon` only if the owner names one: week, term, \
 year or someday.
 Owner: what's on my list for this term?
@@ -208,8 +211,8 @@ Owner: anything new from the bank?
 Owner: find the email about the field trip form from last week
 -> search_email(about="field trip form", days=7)""",
     "send_email": """Call send_email for the owner's message. Use only email addresses the owner \
-wrote; never make one up. Write the whole email in `body`, friendly and short, in the owner's \
-voice, without a signature name.
+wrote or asked you to remember; never make one up. Write the whole email in `body`, friendly and \
+short, in the owner's voice, without a signature name.
 Owner: email jo@example.com to say I'll be 10 minutes late
 -> send_email(to=["jo@example.com"], subject="Running late", body="Hi Jo, I'm running about \
 10 minutes late. See you soon!")""",
@@ -230,15 +233,29 @@ Owner: when am I free for two hours next week?
 }
 
 
-def tool_prompt(name: str, now: datetime, tz: ZoneInfo) -> str:
+def memory_block(facts: Sequence[str]) -> str:
+    """The owner's approved facts that matter for this message (memory/retrieval.py)."""
+    if not facts:
+        return ""
+    lines = "\n".join(f"- {fact}" for fact in facts)
+    return (
+        'Things the owner asked you to remember, in their own words ("I" and "my" mean the '
+        "owner). Use them when they help; don't bring them up otherwise:\n"
+        f"{lines}\n\n"
+    )
+
+
+def tool_prompt(name: str, now: datetime, tz: ZoneInfo, facts: Sequence[str] = ()) -> str:
     """For a routed call: only the chosen tool's rules and examples (a 3B model copes better with
-    one tool's instructions than with all of them), clock last as in system_prompt()."""
+    one tool's instructions than with all of them), then relevant memory, clock last as in
+    system_prompt()."""
     local = now.astimezone(tz)
     rules = _TOOL_RULES.get(name, f"Call {name} for the owner's message.")
-    return f"{_INTRO}\n\n{rules}\n\nNow: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
+    memory = memory_block(facts)
+    return f"{_INTRO}\n\n{rules}\n\n{memory}Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
 
 
-def reply_prompt(now: datetime, tz: ZoneInfo) -> str:
+def reply_prompt(now: datetime, tz: ZoneInfo, facts: Sequence[str] = ()) -> str:
     """For plain replies after routing (no tools attached). Deliberately has no example replies:
     the tool prompt's "Good morning!" example was echoed back to "thanks, you're great"."""
     local = now.astimezone(tz)
@@ -246,8 +263,8 @@ def reply_prompt(now: datetime, tz: ZoneInfo) -> str:
         "You are HelpMate, a friendly, concise personal assistant running on the owner's laptop. "
         "Answer the owner's message directly in at most three sentences. You can set reminders, "
         "add tasks, search and send email and manage their calendar when they ask; there's no "
-        "need to offer that every time. "
-        f"Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
+        "need to offer that every time.\n\n"
+        f"{memory_block(facts)}Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
     )
 
 
@@ -262,6 +279,7 @@ ROUTES = (
     "create_task",
     "list_reminders",
     "list_tasks",
+    "list_memory",
     "search_email",
     "send_email",
     "list_events",
@@ -269,6 +287,7 @@ ROUTES = (
     "find_free_time",
 )
 _ROUTE_RULES = {
+    "list_memory": "they ask what you remember or know about them",
     "create_reminder": "they ask to be reminded of something",
     "create_task": "they ask to add something to their tasks or to-do list",
     "list_reminders": "they ask which reminders they have",
@@ -296,7 +315,12 @@ their calendar without asking you to do something, or say not to do something.""
 _REMINDER_WORDS = re.compile(r"\bremind|\b(?:ping|nudge|alert) me\b", re.IGNORECASE)
 _TASK_WORDS = re.compile(r"\btasks?\b|\bto-?dos?\b|\bto do\b|\blist\b", re.IGNORECASE)
 _MAIL_WORDS = re.compile(r"mail|inbox|\bmessages?\b|@", re.IGNORECASE)
+# "what do you remember about me?", not "I can't remember where I parked" (Oct 1 benchmark miss)
+_MEMORY_WORDS = re.compile(
+    r"\byou (?:to )?(?:remember|know)\b|\bmemory\b|\babout me\b", re.IGNORECASE
+)
 _ROUTE_NEEDS = {
+    "list_memory": _MEMORY_WORDS,
     "create_reminder": _REMINDER_WORDS,
     "list_reminders": re.compile(r"\bremind", re.IGNORECASE),
     "create_task": _TASK_WORDS,

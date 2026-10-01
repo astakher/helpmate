@@ -193,6 +193,24 @@ async def _list_reminders(_: ListRemindersArgs, deps: ToolDeps) -> str:
     return "Upcoming: " + "; ".join(f"{r.text} ({fmt_local(r.due_at, deps.tz)})" for r in upcoming)
 
 
+# --- list_memory (read-only) -----------------------------------------------------------------
+
+
+class ListMemoryArgs(BaseModel):
+    pass
+
+
+async def _list_memory(_: ListMemoryArgs, deps: ToolDeps) -> str:
+    facts = await deps.repos.memory.find_facts()
+    if not facts:
+        return 'You haven\'t asked me to remember anything yet. Say "remember that …" to add one.'
+    things = "thing" if len(facts) == 1 else "things"
+    lines = "\n".join(f"- {f.text}" for f in facts)
+    return (
+        f"You asked me to remember {len(facts)} {things}:\n{lines}\n(Edit them on the Memory page.)"
+    )
+
+
 # --- list_tasks (read-only) ------------------------------------------------------------------
 
 
@@ -410,6 +428,16 @@ def default_registry() -> ToolRegistry:
             read_only=True,
             describe=lambda args, _tz: ("List tasks", args.horizon or ""),
             execute=_list_tasks,
+        )
+    )
+    registry.register(
+        Tool(
+            name="list_memory",
+            description="List everything the owner has asked HelpMate to remember.",
+            args_model=ListMemoryArgs,
+            read_only=True,
+            describe=lambda _args, _tz: ("List memory", ""),
+            execute=_list_memory,
         )
     )
     registry.register(
