@@ -19,12 +19,18 @@ export type ReplyListener = (reply: string, source: Source) => void;
 export type ChatSession = {
   turns: Turn[];
   busy: boolean;
-  /** true while a reload brings back the earlier conversation */
+  /** the open chat's id; null for a new chat that has no messages yet */
+  sessionId: string | null;
+  /** true while a chat's history is loading (after a reload, or opening one from the list) */
   restoring: boolean;
   send: (text: string, source?: Source) => Promise<void>;
   stop: () => void;
-  /** forget the current conversation and start an empty one */
+  /** leave the current conversation (it stays in the list) and start an empty one */
   newChat: () => void;
+  /** open an earlier chat from the list */
+  openChat: (sessionId: string) => Promise<void>;
+  /** delete a chat for good; deleting the open one starts a new chat */
+  deleteChat: (sessionId: string) => Promise<void>;
   setReplyListener: (listener: ReplyListener | null) => void;
 };
 

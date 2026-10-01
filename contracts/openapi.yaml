@@ -22,6 +22,9 @@ paths:
       tags:
       - chat
       summary: List Sessions
+      description: 'The chat list, most recent activity first. A session with no messages yet isn''t listed.
+
+        Untitled sessions (from before titles existed) get their first message as the title.'
       operationId: list_sessions_api_chat_sessions_get
       responses:
         '200':
@@ -51,6 +54,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChatSession'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/chat/sessions/{session_id}:
+    delete:
+      tags:
+      - chat
+      summary: Delete Session
+      description: 'Deletes the chat and its messages for good. Approval cards it produced stay on the
+
+        Approvals page and in the audit log.'
+      operationId: delete_session_api_chat_sessions__session_id__delete
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -1120,6 +1148,12 @@ components:
           type: string
           format: date-time
           title: Created At
+        last_message_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Message At
       additionalProperties: false
       type: object
       required:

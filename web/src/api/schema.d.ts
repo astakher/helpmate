@@ -31,12 +31,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Sessions */
+        /**
+         * List Sessions
+         * @description The chat list, most recent activity first. A session with no messages yet isn't listed.
+         *     Untitled sessions (from before titles existed) get their first message as the title.
+         */
         get: operations["list_sessions_api_chat_sessions_get"];
         put?: never;
         /** Create Session */
         post: operations["create_session_api_chat_sessions_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Session
+         * @description Deletes the chat and its messages for good. Approval cards it produced stay on the
+         *     Approvals page and in the audit log.
+         */
+        delete: operations["delete_session_api_chat_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -689,6 +714,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Last Message At */
+            last_message_at?: string | null;
         };
         /** CreateFolderIn */
         CreateFolderIn: {
@@ -1384,6 +1411,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChatSession"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_api_chat_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

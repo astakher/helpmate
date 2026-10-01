@@ -194,8 +194,9 @@ class Role(StrEnum):
 
 class ChatSession(DomainModel):
     id: str
-    title: str | None = None
+    title: str | None = None  # set from the first message unless given
     created_at: AwareDatetime
+    last_message_at: AwareDatetime | None = None  # chat list order. Added Oct 1, additive.
 
 
 class ChatMessage(DomainModel):

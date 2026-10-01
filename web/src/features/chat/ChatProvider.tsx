@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, api, unwrap } from "../../api/client";
+import { deleteChatSession, keys } from "../../api/queries";
 import { streamChat } from "../../api/sse";
 import type { ChatMessage, Proposal, Source } from "../../api/types";
 import { ChatContext, SESSION_KEY, type ReplyListener, type Turn } from "./useChat";
@@ -42,43 +43,81 @@ function toTurns(messages: ChatMessage[], proposals: Proposal[]): Turn[] {
   return turns;
 }
 
+async function fetchHistory(sessionId: string): Promise<Turn[]> {
+  const [messages, proposals] = await Promise.all([
+    api.GET("/api/chat/sessions/{session_id}/messages", { params: { path: { session_id: sessionId } } }).then(unwrap),
+    api.GET("/api/proposals").then(unwrap),
+  ]);
+  return toTurns(
+    messages,
+    proposals.filter((p) => p.session_id === sessionId),
+  );
+}
+
 /** Holds the conversation above the routes, so it lives as long as the app does. */
 export function ChatProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(() => readSession() !== null);
   const sessionRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const restoreRef = useRef<Promise<void> | null>(null);
+  const loadingRef = useRef<Promise<void> | null>(null);
+  const loadToken = useRef(0); // only the latest load may fill the conversation
   const listenerRef = useRef<ReplyListener | null>(null);
 
-  // After a reload: bring back the stored session's messages and its approval cards.
+  const refreshList = useCallback(() => void queryClient.invalidateQueries({ queryKey: keys.chats }), [queryClient]);
+
+  const select = useCallback((id: string | null) => {
+    sessionRef.current = id;
+    setSessionId(id);
+    writeSession(id);
+  }, []);
+
+  /** Load a chat's history into the (just cleared) conversation; messages sent meanwhile stay after it. */
+  const load = useCallback(
+    (id: string) => {
+      const token = ++loadToken.current;
+      setRestoring(true);
+      loadingRef.current = (async () => {
+        try {
+          const history = await fetchHistory(id);
+          if (loadToken.current === token) setTurns((current) => [...history, ...current]);
+        } catch (error) {
+          if (loadToken.current !== token) return;
+          if (error instanceof ApiError && error.status === 404) {
+            select(null); // deleted elsewhere, or a fresh database: start a new chat
+            refreshList();
+          }
+          // otherwise (API unreachable) stay in this chat, so new messages still join it
+        } finally {
+          if (loadToken.current === token) setRestoring(false);
+        }
+      })();
+      return loadingRef.current;
+    },
+    [refreshList, select],
+  );
+
+  // After a reload: bring back the stored session.
   useEffect(() => {
     const stored = readSession();
     if (!stored) return;
-    let cancelled = false; // StrictMode runs this twice in dev; only the last run counts
-    restoreRef.current = (async () => {
-      try {
-        const [messages, proposals] = await Promise.all([
-          api.GET("/api/chat/sessions/{session_id}/messages", { params: { path: { session_id: stored } } }).then(unwrap),
-          api.GET("/api/proposals").then(unwrap),
-        ]);
-        if (cancelled) return;
-        sessionRef.current = stored;
-        const history = toTurns(messages, proposals.filter((p) => p.session_id === stored));
-        setTurns((current) => [...history, ...current]);
-      } catch (error) {
-        if (cancelled) return;
-        if (error instanceof ApiError && error.status === 404) writeSession(null); // e.g. a fresh database
-        else sessionRef.current = stored; // API unreachable: keep adding to the same conversation
-      } finally {
-        if (!cancelled) setRestoring(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    sessionRef.current = stored;
+    setSessionId(stored);
+    void load(stored); // StrictMode runs this twice in dev; the second load wins (loadToken)
+  }, [load]);
+
+  /** Cancel a reply still streaming: it belongs to the conversation being left. */
+  const leave = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setBusy(false);
+    loadToken.current++; // and ignore a history load still in flight
+    loadingRef.current = null;
+    setRestoring(false);
+    setTurns([]);
   }, []);
 
   const send = useCallback(
@@ -100,13 +139,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setBusy(true);
       let reply = "";
       try {
-        await restoreRef.current; // a reload's history first, so this joins the same session
-        if (!sessionRef.current) {
-          sessionRef.current = unwrap(await api.POST("/api/chat/sessions", { body: {} })).id;
-          writeSession(sessionRef.current);
-        }
+        await loadingRef.current; // the chat's history first, so this joins the same session
+        if (!sessionRef.current) select(unwrap(await api.POST("/api/chat/sessions", { body: {} })).id);
         await streamChat(
-          sessionRef.current,
+          sessionRef.current!,
           { text: trimmed, source },
           (event) => {
             switch (event.type) {
@@ -140,33 +176,50 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       } finally {
         update((t) => ({ ...t, streaming: false }));
         if (abortRef.current === controller) {
-          // not if "New chat" already let the next message start
+          // not if the owner already moved to another chat
           abortRef.current = null;
           setBusy(false);
         }
+        refreshList(); // a new chat's title, and the list order
       }
     },
-    [queryClient],
+    [queryClient, refreshList, select],
   );
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
   const newChat = useCallback(() => {
-    abortRef.current?.abort(); // a reply still streaming belongs to the old conversation
-    abortRef.current = null;
-    setBusy(false);
-    sessionRef.current = null;
-    writeSession(null);
-    setTurns([]);
-  }, []);
+    leave();
+    select(null);
+  }, [leave, select]);
+
+  const openChat = useCallback(
+    async (id: string) => {
+      if (id === sessionRef.current && !restoring) return;
+      leave();
+      select(id);
+      await load(id);
+    },
+    [leave, load, restoring, select],
+  );
+
+  const deleteChat = useCallback(
+    async (id: string) => {
+      await deleteChatSession(id);
+      if (id === sessionRef.current) newChat();
+      queryClient.setQueryData(keys.chats, (list: { id: string }[] | undefined) => list?.filter((s) => s.id !== id));
+      refreshList();
+    },
+    [newChat, queryClient, refreshList],
+  );
 
   const setReplyListener = useCallback((listener: ReplyListener | null) => {
     listenerRef.current = listener;
   }, []);
 
   const value = useMemo(
-    () => ({ turns, busy, restoring, send, stop, newChat, setReplyListener }),
-    [turns, busy, restoring, send, stop, newChat, setReplyListener],
+    () => ({ turns, busy, sessionId, restoring, send, stop, newChat, openChat, deleteChat, setReplyListener }),
+    [turns, busy, sessionId, restoring, send, stop, newChat, openChat, deleteChat, setReplyListener],
   );
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

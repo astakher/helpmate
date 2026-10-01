@@ -3,6 +3,7 @@ import type { Source } from "../../api/types";
 import { ProposalCard } from "../approvals/ProposalCard";
 import { PushToTalkButton, type TranscriptInfo } from "../voice/PushToTalkButton";
 import { useSpeaker } from "../voice/useSpeaker";
+import { ChatList } from "./ChatList";
 import { useChat, type Turn } from "./useChat";
 
 const AUTO_SEND_KEY = "helpmate.voice.autoSend";
@@ -43,7 +44,8 @@ export function ChatPage() {
     [speak],
   );
 
-  const { turns, busy, restoring, send, stop, newChat } = useChat({ onReplyDone });
+  const { turns, busy, restoring, send, stop } = useChat({ onReplyDone });
+  const [listOpen, setListOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftSource, setDraftSource] = useState<Source>("text");
   const [transcribeMs, setTranscribeMs] = useState(0);
@@ -94,94 +96,103 @@ export function ChatPage() {
   }
 
   return (
-    <section className="page chat" aria-labelledby="chat-heading">
+    <div className={`chat-layout${listOpen ? " chat-layout--list-open" : ""}`}>
       <h1 id="chat-heading" className="visually-hidden">
         Chat
       </h1>
-      <div className="chat__bar">
-        <h2 className="visually-hidden">Conversation</h2>
-        {turns.length > 0 && (
+      <ChatList
+        id="chat-list"
+        onPicked={() => {
+          stopSpeaking(); // a reply being read out belongs to the chat being left
+          setListOpen(false);
+          inputRef.current?.focus();
+        }}
+      />
+      <section className="page chat" aria-labelledby="conversation-heading">
+        <div className="chat__bar">
+          <h2 id="conversation-heading" className="visually-hidden">
+            Conversation
+          </h2>
+          {/* phones: the list is folded away behind this button */}
           <button
             type="button"
-            className="btn btn--small"
-            onClick={() => {
-              stopSpeaking();
-              newChat();
-              inputRef.current?.focus();
-            }}
+            className="btn btn--small chat__chats-toggle"
+            aria-expanded={listOpen}
+            aria-controls="chat-list"
+            onClick={() => setListOpen((open) => !open)}
           >
-            New chat
+            Chats
           </button>
-        )}
-      </div>
+        </div>
 
-      <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions text">
-        {turns.length === 0 && restoring && <p className="muted">Bringing back your conversation…</p>}
-        {turns.length === 0 && !restoring && (
-          <div className="chat__empty">
-            <p>Ask HelpMate something, or try:</p>
-            <ul className="chips">
-              {SUGGESTIONS.map((s) => (
-                <li key={s}>
-                  <button type="button" className="chip" onClick={() => void send(s)}>
-                    {s}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {turns.map((turn) => (
-          <Message key={turn.id} turn={turn} />
-        ))}
-        <div ref={endRef} />
-      </div>
+        <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions text">
+          {turns.length === 0 && restoring && <p className="muted">Bringing back your conversation…</p>}
+          {turns.length === 0 && !restoring && (
+            <div className="chat__empty">
+              <p>Ask HelpMate something, or try:</p>
+              <ul className="chips">
+                {SUGGESTIONS.map((s) => (
+                  <li key={s}>
+                    <button type="button" className="chip" onClick={() => void send(s)}>
+                      {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {turns.map((turn) => (
+            <Message key={turn.id} turn={turn} />
+          ))}
+          <div ref={endRef} />
+        </div>
 
-      <form className="composer" onSubmit={submit}>
-        <label htmlFor="composer-input" className="visually-hidden">
-          Message
-        </label>
-        <textarea
-          id="composer-input"
-          ref={inputRef}
-          rows={1}
-          value={draft}
-          placeholder="Message HelpMate…"
-          onChange={(e) => {
-            setDraft(e.target.value);
-            if (!e.target.value.trim()) setDraftSource("text");
-          }}
-          onKeyDown={onKeyDown}
-        />
-        <PushToTalkButton onTranscript={onTranscript} onStart={stopSpeaking} disabled={busy} />
-        {busy ? (
-          <button type="button" className="btn" onClick={stop}>
-            Stop
-          </button>
-        ) : (
-          <button type="submit" className="btn btn--primary" disabled={!draft.trim()}>
-            Send
-          </button>
-        )}
-      </form>
-      <div className="voice-bar">
-        <label className="inline">
-          <input type="checkbox" checked={autoSend} onChange={(e) => toggleAutoSend(e.target.checked)} /> Send
-          voice messages right away
-        </label>
-        {speaking && (
-          <button type="button" className="btn btn--small" onClick={stopSpeaking}>
-            Stop speaking
-          </button>
-        )}
-        {speakError && (
-          <span className="error" role="alert">
-            {speakError}
-          </span>
-        )}
-        {voiceStats && <VoiceTiming stats={voiceStats} />}
-      </div>
-    </section>
+        <form className="composer" onSubmit={submit}>
+          <label htmlFor="composer-input" className="visually-hidden">
+            Message
+          </label>
+          <textarea
+            id="composer-input"
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            placeholder="Message HelpMate…"
+            onChange={(e) => {
+              setDraft(e.target.value);
+              if (!e.target.value.trim()) setDraftSource("text");
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <PushToTalkButton onTranscript={onTranscript} onStart={stopSpeaking} disabled={busy} />
+          {busy ? (
+            <button type="button" className="btn" onClick={stop}>
+              Stop
+            </button>
+          ) : (
+            <button type="submit" className="btn btn--primary" disabled={!draft.trim()}>
+              Send
+            </button>
+          )}
+        </form>
+        <div className="voice-bar">
+          <label className="inline">
+            <input type="checkbox" checked={autoSend} onChange={(e) => toggleAutoSend(e.target.checked)} /> Send
+            voice messages right away
+          </label>
+          {speaking && (
+            <button type="button" className="btn btn--small" onClick={stopSpeaking}>
+              Stop speaking
+            </button>
+          )}
+          {speakError && (
+            <span className="error" role="alert">
+              {speakError}
+            </span>
+          )}
+          {voiceStats && <VoiceTiming stats={voiceStats} />}
+        </div>
+      </section>
+    </div>
   );
 }
 

@@ -152,7 +152,20 @@ class InMemoryChatRepo:
         return self._sessions.get(session_id)
 
     async def find_sessions(self) -> list[ChatSession]:
-        return sorted(self._sessions.values(), key=lambda s: s.created_at, reverse=True)
+        return sorted(
+            self._sessions.values(),
+            key=lambda s: s.last_message_at or s.created_at,
+            reverse=True,
+        )
+
+    async def update_session(self, session: ChatSession) -> None:
+        self._sessions.put(session.id, session)
+
+    async def delete_session(self, session_id: str) -> bool:
+        for message in self._messages.values():
+            if message.session_id == session_id:
+                self._messages.pop(message.id)
+        return self._sessions.pop(session_id)
 
     async def add_message(self, message: ChatMessage) -> None:
         self._messages.put(message.id, message)

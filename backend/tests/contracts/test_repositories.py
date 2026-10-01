@@ -17,6 +17,8 @@ from helpmate.adapters.fakes.memory_repos import InMemoryRepositories
 from helpmate.domain.models import (
     Actor,
     AuditEntry,
+    ChatMessage,
+    ChatSession,
     Delivery,
     MemoryFact,
     NotificationKind,
@@ -27,6 +29,7 @@ from helpmate.domain.models import (
     PushSubscription,
     Reminder,
     ReminderStatus,
+    Role,
     new_id,
 )
 from helpmate.domain.ports import Repositories
@@ -157,3 +160,34 @@ async def test_notification_settings_default_then_round_trip(repos):
     changed = NotificationSettings(max_per_hour=2, private_previews=True)
     await repos.settings.put_notification_settings(changed)
     assert await repos.settings.get_notification_settings() == changed
+
+
+async def test_chat_sessions_order_by_activity_update_and_delete(repos):
+    older = ChatSession(id="s1", created_at=NOW)
+    newer = ChatSession(id="s2", created_at=NOW + timedelta(minutes=1))
+    await repos.chat.add_session(older)
+    await repos.chat.add_session(newer)
+    for session_id, minute in (("s1", 2), ("s2", 3)):
+        await repos.chat.add_message(
+            ChatMessage(
+                id=f"m-{session_id}",
+                session_id=session_id,
+                role=Role.USER,
+                text="hi",
+                created_at=NOW + timedelta(minutes=minute),
+            )
+        )
+    assert [s.id for s in await repos.chat.find_sessions()] == ["s2", "s1"]  # newest first
+
+    # a message in the older chat moves it to the top
+    await repos.chat.update_session(
+        older.model_copy(update={"title": "hi", "last_message_at": NOW + timedelta(minutes=5)})
+    )
+    assert [s.id for s in await repos.chat.find_sessions()] == ["s1", "s2"]
+    assert (await repos.chat.get_session("s1")).title == "hi"
+
+    assert await repos.chat.delete_session("s1")
+    assert await repos.chat.get_session("s1") is None
+    assert await repos.chat.find_messages("s1") == []
+    assert [m.id for m in await repos.chat.find_messages("s2")] == ["m-s2"]  # others untouched
+    assert not await repos.chat.delete_session("s1")

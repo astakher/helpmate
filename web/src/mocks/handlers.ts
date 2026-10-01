@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import type {
   ChatEvent,
   ChatMessage,
+  ChatSession,
   Delivery,
   Folder,
   HealthOut,
@@ -361,6 +362,25 @@ export const handlers = [
     const id = newId();
     db.chats[id] = [];
     return HttpResponse.json({ id, title: null, created_at: nowIso() }, { status: 201 });
+  }),
+  // like the API: chats with messages only, titled by the first one, most recent activity first
+  http.get("*/api/chat/sessions", () =>
+    HttpResponse.json<ChatSession[]>(
+      Object.entries(db.chats)
+        .filter(([, messages]) => messages.length > 0)
+        .map(([id, messages]) => ({
+          id,
+          title: (messages.find((m) => m.role === "user") ?? messages[0]).text.slice(0, 60),
+          created_at: messages[0].created_at,
+          last_message_at: messages.at(-1)!.created_at,
+        }))
+        .sort((a, b) => Date.parse(b.last_message_at) - Date.parse(a.last_message_at)),
+    ),
+  ),
+  http.delete<{ id: string }>("*/api/chat/sessions/:id", ({ params }) => {
+    if (!db.chats[params.id]) return notFound("chat session");
+    delete db.chats[params.id];
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get<{ id: string }>("*/api/chat/sessions/:id/messages", ({ params }) => {
     const messages = db.chats[params.id];

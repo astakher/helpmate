@@ -43,7 +43,7 @@ describe("the conversation outlives the chat page", () => {
     expect(screen.getByText("Memory page")).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "Chat" }));
 
-    expect(screen.getByText("add task read chapter 3 this term")).toBeInTheDocument();
+    expect(within(screen.getByRole("log")).getByText("add task read chapter 3 this term")).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "Task: read chapter 3" })).toBeInTheDocument();
   });
 
@@ -84,7 +84,7 @@ describe("the conversation outlives the chat page", () => {
     const user = userEvent.setup();
     renderWithProviders(<ChatPage />);
 
-    expect(await screen.findByText("remind me to stretch in 1 minute")).toBeInTheDocument();
+    expect(await within(screen.getByRole("log")).findByText("remind me to stretch in 1 minute")).toBeInTheDocument();
     const card = screen.getByRole("article", { name: "Reminder: stretch" });
     expect(within(card).getByRole("button", { name: "Approve" })).toBeInTheDocument();
 
@@ -128,6 +128,6 @@ describe("in the real app shell", () => {
     await user.click(screen.getByRole("link", { name: "Memory" }));
     await screen.findByRole("heading", { level: 1, name: /Memory/ });
     await user.click(screen.getByRole("link", { name: "Chat" }));
-    expect(await screen.findByText("add task read chapter 3 this term")).toBeInTheDocument();
+    expect(await within(screen.getByRole("log")).findByText("add task read chapter 3 this term")).toBeInTheDocument();
   });
 });

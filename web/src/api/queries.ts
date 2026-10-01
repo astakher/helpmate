@@ -23,6 +23,7 @@ export const keys = {
   suggestions: ["memory", "suggestions"] as const,
   facts: ["memory", "facts"] as const,
   notificationSettings: ["settings", "notifications"] as const,
+  chats: ["chat", "sessions"] as const,
 };
 
 function useInvalidate() {
@@ -283,6 +284,25 @@ export function useFacts() {
     queryKey: keys.facts,
     queryFn: async () => unwrap(await api.GET("/api/memory/facts")),
   });
+}
+
+// --- chats (the sidebar on the Chat page) ---
+
+/** Every chat that has a message, most recent activity first, titled by its first message. */
+export function useChatSessions() {
+  return useQuery({
+    queryKey: keys.chats,
+    queryFn: async () => unwrap(await api.GET("/api/chat/sessions")),
+  });
+}
+
+/** Deletes the chat and its messages for good (its approval cards stay on Approvals). */
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  try {
+    unwrap(await api.DELETE("/api/chat/sessions/{session_id}", { params: { path: { session_id: sessionId } } }));
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 404)) throw error; // already gone is fine
+  }
 }
 
 export function useUpdateFact() {

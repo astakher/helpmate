@@ -245,6 +245,7 @@ class PostgresFolderRepo:
 
 class PostgresChatRepo:
     def __init__(self, db: Database) -> None:
+        self._db = db
         self._sessions = _Table(
             db, "chat_sessions", ChatSession, _ID, {"created_at": lambda s: s.created_at}
         )
@@ -263,7 +264,18 @@ class PostgresChatRepo:
         return await self._sessions.get(session_id)
 
     async def find_sessions(self) -> list[ChatSession]:
-        return await self._sessions.select(order="created_at DESC, seq")
+        # most recent activity first; last_message_at lives in the JSONB row (no migration)
+        recent = "COALESCE((data->>'last_message_at')::timestamptz, created_at)"
+        return await self._sessions.select(order=f"{recent} DESC, seq")
+
+    async def update_session(self, session: ChatSession) -> None:
+        await self._sessions.put(session)
+
+    async def delete_session(self, session_id: str) -> bool:
+        async with (await self._db.pool()).acquire() as conn, conn.transaction():
+            await conn.execute("DELETE FROM chat_messages WHERE session_id = $1", session_id)
+            status = await conn.execute("DELETE FROM chat_sessions WHERE id = $1", session_id)
+        return bool(status.endswith(" 1"))
 
     async def add_message(self, message: ChatMessage) -> None:
         await self._messages.put(message)

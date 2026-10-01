@@ -88,6 +88,12 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
 - State inside a page component dies when you navigate away (the chat used to reset after a trip
   to Memory). The conversation lives in `ChatProvider` above `<Routes>`; its session id is in
   localStorage and reloads restore it from `GET /api/chat/sessions/{id}/messages` + its proposals.
+  The Chat page's sidebar (`ChatList`) lists, opens and deletes chats; history loads are versioned
+  (`loadToken`) so a slow load can't overwrite the chat opened after it.
+- After a web rebuild, an open tab keeps running the old bundle until it fully reloads (the PWA
+  caches it): "still broken" reports after a fix → Ctrl+Shift+R first. Check against a fresh
+  profile with real Chrome: `uv run --no-project --with playwright python <script>` using
+  `p.chromium.launch(channel="chrome")` (no browser download needed).
 - The benchmark must not send `keep_alive`: its "10m" overrode OLLAMA_KEEP_ALIVE=30m, so the app's
   next message after a run paid a ~5 s model reload.
 
