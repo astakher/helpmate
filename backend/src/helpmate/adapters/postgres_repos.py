@@ -27,6 +27,8 @@ from helpmate.domain.models import (
     ChatMessage,
     ChatSession,
     Delivery,
+    Document,
+    DocumentPassage,
     Folder,
     Horizon,
     Item,
@@ -383,6 +385,57 @@ class PostgresAuditRepo:
         return [AuditEntry.model_validate_json(r["data"]) for r in rows]
 
 
+class PostgresDocumentRepo:
+    """Documents (JSONB) and passages with pgvector embeddings (migration 0003)."""
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+        self._documents = _Table(
+            db, "documents", Document, _ID, {"created_at": lambda d: d.created_at}
+        )
+
+    async def add(self, document: Document) -> None:
+        await self._documents.put(document)
+
+    async def get(self, document_id: str) -> Document | None:
+        return await self._documents.get(document_id)
+
+    async def find(self) -> list[Document]:
+        return await self._documents.select(order="created_at DESC, seq")
+
+    async def delete(self, document_id: str) -> bool:
+        return await self._documents.delete(document_id)  # passages go with it (ON DELETE CASCADE)
+
+    async def add_passages(
+        self, passages: Sequence[DocumentPassage], vectors: Sequence[Sequence[float]]
+    ) -> None:
+        rows = [
+            (p.id, p.document_id, p.model_dump_json(), _vector(v))
+            for p, v in zip(passages, vectors, strict=True)
+        ]
+        await (await self._db.pool()).executemany(
+            "INSERT INTO document_passages (id, document_id, data, embedding) "
+            "VALUES ($1, $2, $3, $4::vector)",
+            rows,
+        )
+
+    async def search(
+        self, vector: Sequence[float], limit: int = 6
+    ) -> list[tuple[DocumentPassage, float]]:
+        rows = await (await self._db.pool()).fetch(
+            "SELECT data, 1 - (embedding <=> $1::vector) AS score FROM document_passages "
+            "ORDER BY embedding <=> $1::vector LIMIT $2",
+            _vector(vector),
+            limit,
+        )
+        return [(DocumentPassage.model_validate_json(r["data"]), float(r["score"])) for r in rows]
+
+
+def _vector(values: Sequence[float]) -> str:
+    """pgvector's text form; cast with ::vector in SQL (no asyncpg codec needed)."""
+    return "[" + ",".join(f"{v:.7g}" for v in values) + "]"
+
+
 class _Setting(BaseModel):
     key: str
     value: NotificationSettings
@@ -415,6 +468,8 @@ TABLES = (
     "audit",
     "settings",
     "jobs",  # the scheduler's queue (migration 0002, adapters/postgres_jobs.py)
+    "document_passages",
+    "documents",
 )
 
 
@@ -430,6 +485,7 @@ class PostgresRepositories:
             )
         self._dsn = dsn
         self.db = Database(dsn)
+        self.documents = PostgresDocumentRepo(self.db)
         self.proposals = PostgresProposalRepo(self.db)
         self.reminders = PostgresReminderRepo(self.db)
         self.tasks = PostgresTaskRepo(self.db)

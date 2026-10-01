@@ -118,7 +118,7 @@ async def schedule_task(body: ScheduleTaskIn, container: ContainerDep) -> Propos
         )
     )
     if outcome.proposal is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, outcome.summary)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, outcome.summary)
     return outcome.proposal
 
 

@@ -208,6 +208,33 @@ class ChatMessage(DomainModel):
     created_at: AwareDatetime
 
 
+# --- Documents (the file vault; added Oct 1) -------------------------------------------------
+
+
+class Document(DomainModel):
+    """An uploaded file. The bytes live in the file store under `storage_key`; its text, cut
+    into passages with embeddings, in the document repository."""
+
+    id: str
+    name: str
+    content_type: str
+    size: int  # bytes
+    pages: int | None = None  # PDFs
+    passages: int = 0
+    note: str | None = None  # e.g. "only the first 400 passages were indexed"
+    storage_key: str
+    created_at: AwareDatetime
+
+
+class DocumentPassage(DomainModel):
+    id: str
+    document_id: str
+    document_name: str
+    page: int | None = None  # 1-based, PDFs only
+    index: int  # position in the document
+    text: str
+
+
 # --- Notifications ---------------------------------------------------------------------------
 
 

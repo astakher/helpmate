@@ -190,6 +190,27 @@ class InboxOut(Body):
     error: str | None = None  # the mailbox couldn't be read (e.g. Google signed out)
 
 
+# --- documents (added Oct 1) ---
+
+
+class AskIn(Body):
+    question: str = Field(min_length=2, max_length=500)
+
+
+class SourceOut(Body):
+    n: int  # the [n] the answer cites
+    document_id: str
+    document_name: str
+    page: int | None = None
+    excerpt: str  # the passage, shortened
+
+
+class AnswerOut(Body):
+    answer: str
+    sources: list[SourceOut]
+    cited: bool  # False: nothing was cited (sources, if any, are just what matched best)
+
+
 # --- memory ---
 
 

@@ -168,6 +168,14 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   addresses, the owner is warned. `helpmate-injection-bench`: prompt-only defence followed 3/7
   dictated replies; with quarantine 7/7 clean, 8/10 sorted on content (the 2 misses are
   phishing that reads as "action needed", and both are flagged).
+- **Documents** (Oct 1; `agent/documents.py`, `/documents`): upload PDF/.docx/.txt/.md → bytes in
+  SeaweedFS (`HELPMATE_FILES=s3`, `adapters/s3_files.py`, MinIO client), text cut into ~700-char
+  passages, embedded (nomic, CPU), stored with pgvector (migration 0003); ask → top passages
+  (cosine ≥ 0.5, within 0.15 of the best) → llama answers citing [n] (citations to passages it
+  wasn't given are dropped; nothing close → "I couldn't find that"). Passages are quarantined
+  like email. Live on the test DB + a test bucket: 5/5 questions right with the right page,
+  planted instruction ignored, ~1-2 s per answer, a 3-page PDF indexed in 1.1 s.
+  The owner's app: 0 of 12 adapters simulated.
 - **Memory is used in answers** (Oct 1; stand-in for A, `memory/retrieval.py`): approved facts are
   embedded locally (nomic-embed-text on the CPU, llama stays 100% GPU) and the ≤ 3 that match a
   message (score ≥ 0.55 and within 0.08 of the best) go into the reply/tool prompt; the chat shows

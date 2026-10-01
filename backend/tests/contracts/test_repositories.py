@@ -191,3 +191,44 @@ async def test_chat_sessions_order_by_activity_update_and_delete(repos):
     assert await repos.chat.find_messages("s1") == []
     assert [m.id for m in await repos.chat.find_messages("s2")] == ["m-s2"]  # others untouched
     assert not await repos.chat.delete_session("s1")
+
+
+def _axis(i: int) -> list[float]:
+    vector = [0.0] * 768  # nomic-embed-text's size, as the pgvector column expects
+    vector[i] = 1.0
+    return vector
+
+
+async def test_documents_search_by_similarity_and_delete_with_their_passages(repos):
+    from helpmate.domain.models import Document, DocumentPassage
+
+    def doc(doc_id: str, minutes: int) -> Document:
+        return Document(
+            id=doc_id,
+            name=f"{doc_id}.pdf",
+            content_type="application/pdf",
+            size=10,
+            storage_key=f"documents/{doc_id}",
+            created_at=NOW + timedelta(minutes=minutes),
+        )
+
+    def passage(pid: str, doc_id: str, index: int) -> DocumentPassage:
+        return DocumentPassage(
+            id=pid, document_id=doc_id, document_name=f"{doc_id}.pdf", page=1, index=index, text=pid
+        )
+
+    await repos.documents.add(doc("syllabus", 0))
+    await repos.documents.add(doc("lease", 1))
+    await repos.documents.add_passages(
+        [passage("s1", "syllabus", 0), passage("s2", "syllabus", 1), passage("l1", "lease", 0)],
+        [_axis(0), _axis(1), [0.6, 0.8] + [0.0] * 766],
+    )
+    assert [d.id for d in await repos.documents.find()] == ["lease", "syllabus"]  # newest first
+    hits = await repos.documents.search(_axis(1), limit=2)
+    assert [p.id for p, _ in hits] == ["s2", "l1"]
+    assert round(hits[0][1], 3) == 1.0 and round(hits[1][1], 3) == 0.8  # cosine similarity
+
+    assert await repos.documents.delete("syllabus")
+    assert await repos.documents.get("syllabus") is None
+    assert [p.id for p, _ in await repos.documents.search(_axis(0), limit=5)] == ["l1"]
+    assert not await repos.documents.delete("syllabus")

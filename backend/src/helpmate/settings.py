@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # src/helpmate/settings.py -> parents: helpmate, src, backend, <repo root>
@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     auth: Literal["dev", "totp"] = "dev"
     mail: Literal["fake", "gmail"] = "fake"
     calendar: Literal["fake", "google"] = "fake"
+    files: Literal["memory", "s3"] = "memory"
 
     # --- Core ---
     timezone: str = "America/Toronto"
@@ -77,6 +78,17 @@ class Settings(BaseSettings):
     # --- Postgres / S3 (Workstream B) ---
     database_url: str | None = None
     s3_endpoint: str | None = None
+    # the same names infra/docker-compose.yml starts SeaweedFS with (no HELPMATE_ prefix needed)
+    s3_access_key: str = Field(
+        default="helpmate", validation_alias=AliasChoices("HELPMATE_S3_ACCESS_KEY", "S3_ACCESS_KEY")
+    )
+    s3_secret_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("HELPMATE_S3_SECRET_KEY", "S3_SECRET_KEY"),
+    )
+    s3_bucket: str = Field(
+        default="helpmate", validation_alias=AliasChoices("HELPMATE_S3_BUCKET", "S3_BUCKET")
+    )
 
     # --- Web Push (Workstream C) ---
     vapid_public_key: str = ""

@@ -14,6 +14,7 @@ import { TasksPage } from "./features/tasks/TasksPage";
 import { TodayPage } from "./features/today/TodayPage";
 import { WeekPage } from "./features/week/WeekPage";
 import { InboxPage } from "./features/inbox/InboxPage";
+import { DocumentsPage } from "./features/documents/DocumentsPage";
 
 export function App() {
   const { pathname } = useLocation();
@@ -41,6 +42,7 @@ export function App() {
                 <Route path="/today" element={<TodayPage />} />
                 <Route path="/week" element={<WeekPage />} />
                 <Route path="/inbox" element={<InboxPage />} />
+                <Route path="/documents" element={<DocumentsPage />} />
                 <Route path="/reminders" element={<TodayPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/folders" element={<FoldersPage />} />
@@ -77,6 +79,7 @@ function Nav() {
       <NavLink to="/today">Today</NavLink>
       <NavLink to="/week">Week</NavLink>
       <NavLink to="/inbox">Inbox</NavLink>
+      <NavLink to="/documents">Documents</NavLink>
       <NavLink to="/tasks">Tasks</NavLink>
       <NavLink to="/folders">Folders</NavLink>
       <NavLink to="/memory">Memory</NavLink>

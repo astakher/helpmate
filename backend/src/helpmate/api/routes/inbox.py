@@ -50,10 +50,10 @@ async def draft_reply(message_id: str, container: ContainerDep) -> Proposal:
     except LookupError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "message not found") from exc
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     outcome = await container.policy.handle_call(
         ToolCall(id=new_id(), name="send_email", arguments=args)
     )
     if outcome.proposal is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, outcome.summary)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, outcome.summary)
     return outcome.proposal

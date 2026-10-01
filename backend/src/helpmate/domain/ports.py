@@ -21,6 +21,8 @@ from helpmate.domain.models import (
     ChatSession,
     Delivery,
     DeliveryResult,
+    Document,
+    DocumentPassage,
     EmailDetail,
     EmailDraft,
     EmailSummary,
@@ -163,6 +165,16 @@ class AuthPort(Adapter, Protocol):
 # --- Connectors (Workstream B, proposed v0.1) ------------------------------------------------
 
 
+class FileStorePort(Adapter, Protocol):
+    """Where uploaded files' bytes live. Real impl: S3 (SeaweedFS on 127.0.0.1). Added Oct 1."""
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+    async def get(self, key: str) -> bytes | None: ...
+
+    async def delete(self, key: str) -> None: ...
+
+
 class MailPort(Adapter, Protocol):
     async def search(self, query: str, limit: int = 20) -> list[EmailSummary]: ...
 
@@ -263,9 +275,27 @@ class SettingsRepo(Protocol):
     async def put_notification_settings(self, settings: NotificationSettings) -> None: ...
 
 
+class DocumentRepo(Protocol):
+    """Uploaded documents and their passages with embeddings (semantic search). Added Oct 1."""
+
+    async def add(self, document: Document) -> None: ...
+    async def get(self, document_id: str) -> Document | None: ...
+    async def find(self) -> list[Document]: ...  # newest first
+    async def delete(self, document_id: str) -> bool: ...  # with its passages
+    async def add_passages(
+        self, passages: Sequence[DocumentPassage], vectors: Sequence[Sequence[float]]
+    ) -> None: ...
+    async def search(
+        self, vector: Sequence[float], limit: int = 6
+    ) -> list[tuple[DocumentPassage, float]]:
+        """The passages most similar to `vector`, best first, with cosine similarity."""
+        ...
+
+
 class Repositories(Adapter, Protocol):
     """One bundle so the whole persistence layer swaps with HELPMATE_REPO."""
 
+    documents: DocumentRepo
     proposals: ProposalRepo
     reminders: ReminderRepo
     tasks: TaskRepo

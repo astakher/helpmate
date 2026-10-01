@@ -17,6 +17,7 @@ async def test_health_reports_every_seam_as_fake(client):
         "auth",
         "mail",
         "calendar",
+        "files",
         "notifier",
         "stt",
         "tts",

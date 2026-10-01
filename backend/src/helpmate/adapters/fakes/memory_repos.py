@@ -6,6 +6,8 @@ matches how the Postgres adapters will behave and keeps the fake honest.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -15,6 +17,8 @@ from helpmate.domain.models import (
     ChatMessage,
     ChatSession,
     Delivery,
+    Document,
+    DocumentPassage,
     FieldDef,
     FieldType,
     Folder,
@@ -255,6 +259,43 @@ class InMemoryAuditRepo:
         return [_copy(e) for e in reversed(self._rows[-limit:])]
 
 
+class InMemoryDocumentRepo:
+    def __init__(self) -> None:
+        self._documents: _Store[Document] = _Store()
+        self._passages: list[tuple[DocumentPassage, list[float]]] = []
+
+    async def add(self, document: Document) -> None:
+        self._documents.put(document.id, document)
+
+    async def get(self, document_id: str) -> Document | None:
+        return self._documents.get(document_id)
+
+    async def find(self) -> list[Document]:
+        return sorted(self._documents.values(), key=lambda d: d.created_at, reverse=True)
+
+    async def delete(self, document_id: str) -> bool:
+        self._passages = [(p, v) for p, v in self._passages if p.document_id != document_id]
+        return self._documents.pop(document_id)
+
+    async def add_passages(
+        self, passages: Sequence[DocumentPassage], vectors: Sequence[Sequence[float]]
+    ) -> None:
+        for passage, vector in zip(passages, vectors, strict=True):
+            self._passages.append((_copy(passage), list(vector)))
+
+    async def search(
+        self, vector: Sequence[float], limit: int = 6
+    ) -> list[tuple[DocumentPassage, float]]:
+        scored = [(_copy(p), _cosine(vector, v)) for p, v in self._passages]
+        return sorted(scored, key=lambda pair: pair[1], reverse=True)[:limit]
+
+
+def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
 class InMemorySettingsRepo:
     def __init__(self) -> None:
         self._notifications = NotificationSettings()
@@ -271,6 +312,7 @@ class InMemoryRepositories:
     is_fake = True
 
     def __init__(self) -> None:
+        self.documents = InMemoryDocumentRepo()
         self.proposals = InMemoryProposalRepo()
         self.reminders = InMemoryReminderRepo()
         self.tasks = InMemoryTaskRepo()

@@ -26,6 +26,7 @@ export const keys = {
   chats: ["chat", "sessions"] as const,
   week: ["week"] as const,
   inbox: ["inbox"] as const,
+  documents: ["documents"] as const,
 };
 
 function useInvalidate() {
@@ -184,6 +185,48 @@ export function useDraftReply() {
     mutationFn: async (messageId: string) =>
       unwrap(await api.POST("/api/inbox/{message_id}/draft-reply", { params: { path: { message_id: messageId } } })),
     onSuccess: () => invalidate(["proposals"]),
+  });
+}
+
+// --- documents (the file vault) ---
+
+export function useDocuments() {
+  return useQuery({
+    queryKey: keys.documents,
+    queryFn: async () => unwrap(await api.GET("/api/documents")),
+  });
+}
+
+/** Upload a file as the raw request body (like voice recordings); the server reads and indexes it. */
+export function useUploadDocument() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (file: File) =>
+      unwrap(
+        await api.POST("/api/documents", {
+          params: { query: { name: file.name } },
+          body: file as unknown as string,
+          bodySerializer: (body) => body as unknown as BodyInit,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        }),
+      ),
+    onSettled: () => invalidate(keys.documents),
+  });
+}
+
+export function useDeleteDocument() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (documentId: string) =>
+      unwrap(await api.DELETE("/api/documents/{document_id}", { params: { path: { document_id: documentId } } })),
+    onSettled: () => invalidate(keys.documents),
+  });
+}
+
+/** An answer from the owner's documents only, citing passages as [n]. */
+export function useAskDocuments() {
+  return useMutation({
+    mutationFn: async (question: string) => unwrap(await api.POST("/api/documents/ask", { body: { question } })),
   });
 }
 

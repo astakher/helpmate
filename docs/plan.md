@@ -190,8 +190,8 @@ Everything here is built against MSW mocks, so it doesn't wait on A or B.
 | 4 (Oct 19) | 7 | voice, phone push, custom folders, secure deploy (**C**) | Phases 5–7 |
 | 5 (Oct 26) | **8 · midterm: design doc + 3-min video** | brief/check-in/weekly plan, Gmail + **Google Calendar** draft/approve (B); feature freeze | brief/plan views, email/event preview cards, **video** |
 | 6 (Nov 2) | 9 | E2E + DST tests, demo (**C**) | Phase 8 |
-| 7 (Nov 9) | 10 | inbox triage + prompt-injection defences, calendar import (B) | triage UI |
-| 8 (Nov 16) | 11 | document Q&A with citations, file vault (A) | upload + citations UI |
+| 7 (Nov 9) | 10 | inbox triage + prompt-injection defences, calendar import (B) — *triage + defences prototyped Oct 1 (stand-in)* | triage UI — *done Oct 1* |
+| 8 (Nov 16) | 11 | document Q&A with citations, file vault (A) — *prototyped Oct 1 (stand-in)* | upload + citations UI — *done Oct 1* |
 | 9 (Nov 23) | 12 | backups, eval in CI, security review, **network-monitoring privacy test** (B) | SUS survey (≥ 5 peers), perf numbers |
 | 10 (Nov 30) | 13 | final report, video, presentation | final demo |
 

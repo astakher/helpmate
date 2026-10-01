@@ -603,6 +603,129 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/documents:
+    get:
+      tags:
+      - documents
+      summary: List Documents
+      operationId: list_documents_api_documents_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+                title: Response List Documents Api Documents Get
+    post:
+      tags:
+      - documents
+      summary: Upload
+      description: Store a PDF, Word .docx or text/Markdown file and index its text for questions.
+      operationId: upload_api_documents_post
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The file's name, e.g. syllabus.pdf
+          title: Name
+        description: The file's name, e.g. syllabus.pdf
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+  /api/documents/{document_id}/file:
+    get:
+      tags:
+      - documents
+      summary: Download
+      operationId: download_api_documents__document_id__file_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/documents/{document_id}:
+    delete:
+      tags:
+      - documents
+      summary: Delete
+      operationId: delete_api_documents__document_id__delete
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/documents/ask:
+    post:
+      tags:
+      - documents
+      summary: Ask
+      description: Answer from the owner's documents only, citing passages as [n].
+      operationId: ask_api_documents_ask_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AskIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/memory/suggestions:
     get:
       tags:
@@ -1154,6 +1277,38 @@ components:
       - name
       - fake
       title: AdapterInfo
+    AnswerOut:
+      properties:
+        answer:
+          type: string
+          title: Answer
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceOut'
+          type: array
+          title: Sources
+        cited:
+          type: boolean
+          title: Cited
+      additionalProperties: false
+      type: object
+      required:
+      - answer
+      - sources
+      - cited
+      title: AnswerOut
+    AskIn:
+      properties:
+        question:
+          type: string
+          maxLength: 500
+          minLength: 2
+          title: Question
+      additionalProperties: false
+      type: object
+      required:
+      - question
+      title: AskIn
     AuditEntry:
       properties:
         id:
@@ -1464,6 +1619,55 @@ components:
       - notification_id
       - delivered
       title: DeliveryResult
+    Document:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        content_type:
+          type: string
+          title: Content Type
+        size:
+          type: integer
+          title: Size
+        pages:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Pages
+        passages:
+          type: integer
+          title: Passages
+          default: 0
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+        storage_key:
+          type: string
+          title: Storage Key
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - content_type
+      - size
+      - storage_key
+      - created_at
+      title: Document
+      description: 'An uploaded file. The bytes live in the file store under `storage_key`; its text,
+        cut
+
+        into passages with embeddings, in the document repository.'
     EmailSummary:
       properties:
         id:
@@ -2123,6 +2327,33 @@ components:
       required:
       - task_id
       title: ScheduleTaskIn
+    SourceOut:
+      properties:
+        n:
+          type: integer
+          title: N
+        document_id:
+          type: string
+          title: Document Id
+        document_name:
+          type: string
+          title: Document Name
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        excerpt:
+          type: string
+          title: Excerpt
+      additionalProperties: false
+      type: object
+      required:
+      - n
+      - document_id
+      - document_name
+      - excerpt
+      title: SourceOut
     SpeakIn:
       properties:
         text:

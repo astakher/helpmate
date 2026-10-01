@@ -17,6 +17,8 @@ import type {
   Reminder,
   SubscriptionIn,
   Task,
+  AnswerOut,
+  DocumentInfo,
   InboxOut,
   TodayOut,
   ToolInfo,
@@ -48,7 +50,21 @@ type Db = {
   brief: Pick<TodayOut, "events" | "free_slots" | "unread" | "calendar_error" | "mail_error">;
   week: { days: WeekOut["days"] | null; calendar_error: string | null; full: boolean }; // days null: 7 empty days from today
   inbox: InboxOut;
+  documents: { file: DocumentInfo; text: string }[]; // the mock "indexes" the whole text
 };
+
+// a stand-in for the agent: answers with the first sentence of the first file that shares a word
+function mockAnswer(question: string): AnswerOut {
+  const words = question.toLowerCase().match(/\w{4,}/g) ?? [];
+  const hit = db.documents.find((d) => words.some((w) => d.text.toLowerCase().includes(w)));
+  if (!hit) return { answer: "I couldn't find that in your documents.", sources: [], cited: false };
+  const sentence = hit.text.split(/(?<=\.)\s/)[0];
+  return {
+    answer: `${sentence} [1]`,
+    sources: [{ n: 1, document_id: hit.file.id, document_name: hit.file.name, page: null, excerpt: sentence }],
+    cited: true,
+  };
+}
 
 export const db: Db = fresh();
 
@@ -97,6 +113,7 @@ function fresh(): Db {
     brief: { events: [], free_slots: [], unread: [], calendar_error: null, mail_error: null },
     week: { days: null, calendar_error: null, full: false },
     inbox: { items: [], error: null },
+    documents: [],
   };
 }
 
@@ -464,6 +481,35 @@ export const handlers = [
     return HttpResponse.json(reminder);
   }),
   http.get("*/api/inbox", () => HttpResponse.json<InboxOut>(db.inbox)),
+  http.get("*/api/documents", () => HttpResponse.json(db.documents.map((d) => d.file).reverse())),
+  http.post("*/api/documents", async ({ request }) => {
+    const name = new URL(request.url).searchParams.get("name") ?? "document";
+    if (!/\.(pdf|docx|txt|md|markdown)$/i.test(name)) {
+      return HttpResponse.json({ detail: "Upload a PDF, a Word .docx, or a .txt / .md file." }, { status: 422 });
+    }
+    const text = await request.text();
+    const file: DocumentInfo = {
+      id: newId(),
+      name,
+      content_type: request.headers.get("content-type") ?? "text/plain",
+      size: text.length,
+      pages: null,
+      passages: 1,
+      note: null,
+      storage_key: `documents/${name}`,
+      created_at: nowIso(),
+    };
+    db.documents.push({ file, text });
+    return HttpResponse.json(file, { status: 201 });
+  }),
+  http.delete<{ id: string }>("*/api/documents/:id", ({ params }) => {
+    const before = db.documents.length;
+    db.documents = db.documents.filter((d) => d.file.id !== params.id);
+    return db.documents.length < before ? new HttpResponse(null, { status: 204 }) : notFound("document");
+  }),
+  http.post<never, { question: string }>("*/api/documents/ask", async ({ request }) =>
+    HttpResponse.json<AnswerOut>(mockAnswer((await request.json()).question)),
+  ),
   http.post<{ id: string }>("*/api/inbox/:id/draft-reply", ({ params }) => {
     const item = db.inbox.items.find((i) => i.email.id === params.id);
     if (!item) return notFound("message");

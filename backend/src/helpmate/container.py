@@ -19,11 +19,13 @@ from helpmate.adapters.fakes.dev_scheduler import DevScheduler
 from helpmate.adapters.fakes.fake_llm import FakeEmbeddings, FakeLLM
 from helpmate.adapters.fakes.fake_speech import FakeSTT, FakeTTS
 from helpmate.adapters.fakes.log_notifier import LogNotifier
+from helpmate.adapters.fakes.memory_files import InMemoryFileStore
 from helpmate.adapters.fakes.memory_repos import InMemoryRepositories
 from helpmate.adapters.fakes.scripted_agent import ScriptedAgent
 from helpmate.adapters.quiet_hours import QuietHoursNotifier
 from helpmate.adapters.speech_http import HttpSTT, HttpTTS
 from helpmate.adapters.webpush_notifier import WebPushNotifier
+from helpmate.agent.documents import DocumentLibrary
 from helpmate.agent.policy import PolicyEngine
 from helpmate.agent.tools import ToolDeps, ToolRegistry, default_registry
 from helpmate.agent.triage import Triage
@@ -34,6 +36,7 @@ from helpmate.domain.ports import (
     CalendarPort,
     Clock,
     EmbeddingPort,
+    FileStorePort,
     LLMPort,
     MailPort,
     NotifierPort,
@@ -52,6 +55,7 @@ _OWNER = {
     "auth": "B",
     "mail": "B",
     "calendar": "B",
+    "files": "B",
     "notifier": "C",
     "stt": "C",
     "tts": "C",
@@ -87,6 +91,8 @@ class Container:
     policy: PolicyEngine
     agent: AgentPort
     triage: Triage
+    files: FileStorePort
+    library: DocumentLibrary
     _http_clients: list[httpx.AsyncClient] = field(default_factory=list)
 
     def adapters(self) -> dict[str, Adapter]:
@@ -99,6 +105,7 @@ class Container:
             "auth": self.auth,
             "mail": self.mail,
             "calendar": self.calendar,
+            "files": self.files,
             "notifier": self.notifier,
             "stt": self.stt,
             "tts": self.tts,
@@ -220,6 +227,26 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         if settings.tts == "http":
             tts = HttpTTS(speech)
 
+    # --- Files: uploaded documents' bytes (B) ---
+    files: FileStorePort
+    if settings.files == "memory":
+        files = InMemoryFileStore()
+    else:
+        # Stand-in for Workstream B - not part of the Part C deliverable
+        from helpmate.adapters.s3_files import S3FileStore
+
+        if not settings.s3_endpoint or not settings.s3_secret_key.get_secret_value():
+            raise AdapterNotImplemented(
+                "HELPMATE_FILES=s3 needs HELPMATE_S3_ENDPOINT and S3_ACCESS_KEY / S3_SECRET_KEY "
+                "(the SeaweedFS container's credentials) in .env."
+            )
+        files = S3FileStore(
+            settings.s3_endpoint,
+            settings.s3_access_key,
+            settings.s3_secret_key.get_secret_value(),
+            settings.s3_bucket,
+        )
+
     # --- Mail + calendar (B) ---
     mail: MailPort = FakeMail()
     calendar: CalendarPort = FakeCalendar()
@@ -289,5 +316,7 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         policy=policy,
         agent=agent,
         triage=Triage(mail, llm),
+        files=files,
+        library=DocumentLibrary(repos.documents, files, embeddings, llm),
         _http_clients=http_clients,
     )
