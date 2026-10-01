@@ -85,6 +85,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   into fields it doesn't need (Gmail then searched `from:null null`). Fixes: topic words decide which
   routes the router is offered (`routes_for`), and `resolve()` drops placeholder values. A benchmark
   `~` (contains) check can pass garbage; add a `!~` check for it.
+- State inside a page component dies when you navigate away (the chat used to reset after a trip
+  to Memory). The conversation lives in `ChatProvider` above `<Routes>`; its session id is in
+  localStorage and reloads restore it from `GET /api/chat/sessions/{id}/messages` + its proposals.
 - The benchmark must not send `keep_alive`: its "10m" overrode OLLAMA_KEEP_ALIVE=30m, so the app's
   next message after a run paid a ~5 s model reload.
 

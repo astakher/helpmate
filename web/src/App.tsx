@@ -4,6 +4,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
 import { AuthGate } from "./features/auth/AuthGate";
 import { ChatPage } from "./features/chat/ChatPage";
+import { ChatProvider } from "./features/chat/ChatProvider";
 import { FolderPage } from "./features/folders/FolderPage";
 import { FoldersPage } from "./features/folders/FoldersPage";
 import { MemoryPage } from "./features/memory/MemoryPage";
@@ -16,36 +17,39 @@ export function App() {
   const { pathname } = useLocation();
   return (
     <AuthGate>
-      <div className="shell">
-        <a className="skip-link" href="#main">
-          Skip to content
-        </a>
-        <header className="topbar">
-          <span className="brand" aria-hidden="true">
-            HelpMate
-          </span>
-          <FakeChip />
-          <Nav />
-        </header>
-        <main id="main" className="main">
-          {/* a page error keeps the nav usable; going to another page clears it */}
-          <ErrorBoundary resetKey={pathname}>
-            <Routes>
-              <Route path="/" element={<ChatPage />} />
-              <Route path="/approvals" element={<ApprovalsPage />} />
-              <Route path="/today" element={<TodayPage />} />
-              <Route path="/reminders" element={<TodayPage />} />
-              <Route path="/tasks" element={<TasksPage />} />
-              <Route path="/folders" element={<FoldersPage />} />
-              <Route path="/folders/:folderId" element={<FolderPage />} />
-              <Route path="/memory" element={<MemoryPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/status" element={<StatusPage />} />
-              <Route path="*" element={<ChatPage />} />
-            </Routes>
-          </ErrorBoundary>
-        </main>
-      </div>
+      {/* above the routes: the conversation survives going to another page and back */}
+      <ChatProvider>
+        <div className="shell">
+          <a className="skip-link" href="#main">
+            Skip to content
+          </a>
+          <header className="topbar">
+            <span className="brand" aria-hidden="true">
+              HelpMate
+            </span>
+            <FakeChip />
+            <Nav />
+          </header>
+          <main id="main" className="main">
+            {/* a page error keeps the nav usable; going to another page clears it */}
+            <ErrorBoundary resetKey={pathname}>
+              <Routes>
+                <Route path="/" element={<ChatPage />} />
+                <Route path="/approvals" element={<ApprovalsPage />} />
+                <Route path="/today" element={<TodayPage />} />
+                <Route path="/reminders" element={<TodayPage />} />
+                <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/folders" element={<FoldersPage />} />
+                <Route path="/folders/:folderId" element={<FolderPage />} />
+                <Route path="/memory" element={<MemoryPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/status" element={<StatusPage />} />
+                <Route path="*" element={<ChatPage />} />
+              </Routes>
+            </ErrorBoundary>
+          </main>
+        </div>
+      </ChatProvider>
     </AuthGate>
   );
 }

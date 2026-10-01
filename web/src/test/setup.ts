@@ -7,6 +7,7 @@ import { server } from "../mocks/node";
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
+  localStorage.clear(); // e.g. the stored chat session must not leak into the next test
   server.resetHandlers();
   resetDb();
 });

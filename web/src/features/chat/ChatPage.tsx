@@ -43,7 +43,7 @@ export function ChatPage() {
     [speak],
   );
 
-  const { turns, busy, send, stop } = useChat({ onReplyDone });
+  const { turns, busy, restoring, send, stop, newChat } = useChat({ onReplyDone });
   const [draft, setDraft] = useState("");
   const [draftSource, setDraftSource] = useState<Source>("text");
   const [transcribeMs, setTranscribeMs] = useState(0);
@@ -98,10 +98,26 @@ export function ChatPage() {
       <h1 id="chat-heading" className="visually-hidden">
         Chat
       </h1>
-      <h2 className="visually-hidden">Conversation</h2>
+      <div className="chat__bar">
+        <h2 className="visually-hidden">Conversation</h2>
+        {turns.length > 0 && (
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={() => {
+              stopSpeaking();
+              newChat();
+              inputRef.current?.focus();
+            }}
+          >
+            New chat
+          </button>
+        )}
+      </div>
 
       <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions text">
-        {turns.length === 0 && (
+        {turns.length === 0 && restoring && <p className="muted">Bringing back your conversation…</p>}
+        {turns.length === 0 && !restoring && (
           <div className="chat__empty">
             <p>Ask HelpMate something, or try:</p>
             <ul className="chips">

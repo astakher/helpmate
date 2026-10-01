@@ -310,6 +310,12 @@ a {
   min-height: calc(100dvh - 7rem);
 }
 
+.chat__bar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
 .chat__log {
   flex: 1;
   display: flex;

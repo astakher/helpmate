@@ -4,6 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type {
   ChatEvent,
+  ChatMessage,
   Delivery,
   Folder,
   HealthOut,
@@ -40,6 +41,7 @@ type Db = {
   voiceTranscript: string; // what the mock STT "hears"
   voiceUploads: string[]; // Content-Type of each uploaded recording
   spoken: string[]; // every text sent to the mock TTS
+  chats: Record<string, ChatMessage[]>; // session id -> stored messages, as the API keeps them
 };
 
 export const db: Db = fresh();
@@ -85,6 +87,7 @@ function fresh(): Db {
     voiceTranscript: "what are my reminders?",
     voiceUploads: [],
     spoken: [],
+    chats: {},
   };
 }
 
@@ -354,13 +357,36 @@ export const handlers = [
   }),
 
   // --- chat ---
-  http.post("*/api/chat/sessions", () =>
-    HttpResponse.json({ id: newId(), title: null, created_at: nowIso() }, { status: 201 }),
-  ),
-  http.post<{ id: string }, { text: string }>("*/api/chat/sessions/:id/messages", async ({ params, request }) => {
-    const body = await request.json();
-    return sseFrames(reply(body.text, params.id));
+  http.post("*/api/chat/sessions", () => {
+    const id = newId();
+    db.chats[id] = [];
+    return HttpResponse.json({ id, title: null, created_at: nowIso() }, { status: 201 });
   }),
+  http.get<{ id: string }>("*/api/chat/sessions/:id/messages", ({ params }) => {
+    const messages = db.chats[params.id];
+    return messages ? HttpResponse.json(messages) : notFound("chat session");
+  }),
+  http.post<{ id: string }, { text: string; source?: "text" | "voice" }>(
+    "*/api/chat/sessions/:id/messages",
+    async ({ params, request }) => {
+      const body = await request.json();
+      const messages = (db.chats[params.id] ??= []);
+      const message = (role: "user" | "assistant", text: string): ChatMessage => ({
+        id: newId(),
+        session_id: params.id,
+        role,
+        text,
+        source: role === "user" ? (body.source ?? "text") : "text",
+        created_at: nowIso(),
+      });
+      messages.push(message("user", body.text));
+      const events = reply(body.text, params.id);
+      // like the API, the reply is stored once it's complete (here: right away)
+      const text = events.map((e) => (e.type === "message.delta" ? e.text : "")).join("");
+      messages.push(message("assistant", text));
+      return sseFrames(events);
+    },
+  ),
 
   // --- proposals ---
   http.get("*/api/proposals", ({ request }) => {
