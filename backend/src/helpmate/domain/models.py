@@ -206,6 +206,8 @@ class ChatMessage(DomainModel):
     text: str
     source: Source = "text"
     created_at: AwareDatetime
+    # the emails a reply showed as cards, so they come back after a reload (Oct 2, additive)
+    emails: list[EmailSummary] = []
 
 
 # --- Documents (the file vault; added Oct 1) -------------------------------------------------

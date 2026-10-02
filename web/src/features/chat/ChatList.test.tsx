@@ -8,7 +8,7 @@ import { ChatPage } from "./ChatPage";
 import { SESSION_KEY } from "./useChat";
 
 function message(sessionId: string, role: ChatMessage["role"], text: string, at: string): ChatMessage {
-  return { id: `${sessionId}-${role}`, session_id: sessionId, role, text, source: "text", created_at: at };
+  return { id: `${sessionId}-${role}`, session_id: sessionId, role, text, source: "text", created_at: at, emails: [] };
 }
 
 function seedTwoChats() {

@@ -9,8 +9,9 @@ mail and calendar tools, which work the same against the fakes and against Googl
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
+from email.utils import parseaddr
 from typing import Annotated, Any, Self
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,7 @@ from helpmate.agent.free_time import conflicts, free_slots, is_all_day
 from helpmate.domain.models import (
     CalendarEvent,
     EmailDraft,
+    EmailSummary,
     Horizon,
     Reminder,
     ReminderStatus,
@@ -43,13 +45,22 @@ class ToolDeps:
 
 
 @dataclass(frozen=True)
+class ToolReply:
+    """A read-only result with the items behind it: `text` is what the owner reads (and hears),
+    `emails` are shown as cards under it in the chat."""
+
+    text: str
+    emails: list[EmailSummary] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class Tool[A: BaseModel]:
     name: str
     description: str
     args_model: type[A]
     read_only: bool
     describe: Callable[[A, ZoneInfo], tuple[str, str]]  # -> (card title, card summary)
-    execute: Callable[[A, ToolDeps], Awaitable[str]]  # -> human-readable result
+    execute: Callable[[A, ToolDeps], Awaitable[str | ToolReply]]  # -> human-readable result
     risk: Risk = Risk.WRITE
     preview: Callable[[A], str | None] | None = None  # e.g. full email body for the card
     check: Callable[[A, ToolDeps], Awaitable[list[str]]] | None = None  # -> card warnings
@@ -261,16 +272,20 @@ def inbox_query(query: str) -> str:
     return " ".join([*terms, *([] if "in:inbox" in terms else ["in:inbox"]), PRIMARY]).strip()
 
 
-async def _search_email(args: SearchEmailArgs, deps: ToolDeps) -> str:
+async def _search_email(args: SearchEmailArgs, deps: ToolDeps) -> ToolReply:
+    """One short sentence (it's also what voice reads out); the emails go with it as cards."""
     found = await deps.mail.search(inbox_query(args.query), args.limit)
     if not found:
-        return "No emails match." if args.query else "Your inbox is empty."
-    lines = [
-        f"{'* ' if m.unread else ''}{m.sender}: {m.subject} ({fmt_local(m.received_at, deps.tz)})"
-        + (f" - {m.snippet[:140]}" if m.snippet else "")
-        for m in found
-    ]
-    return f"{len(found)} email{'s' if len(found) != 1 else ''}:\n" + "\n".join(lines)
+        return ToolReply("No emails match." if args.query else "Your inbox is empty.")
+    newest = found[0]
+    name, address = parseaddr(newest.sender)
+    latest = f"{name or address or newest.sender}: {newest.subject or '(no subject)'}"
+    end = "" if latest.endswith((".", "?", "!")) else "."
+    if len(found) == 1:
+        return ToolReply(f"Here's your latest email, from {latest}{end}", found)
+    unread = sum(m.unread for m in found)
+    count = f"{len(found)} emails" + (f", {unread} unread" if unread else "")
+    return ToolReply(f"Here are {count}. The newest is from {latest}{end}", found)
 
 
 # --- send_email (the card is the draft) ------------------------------------------------------

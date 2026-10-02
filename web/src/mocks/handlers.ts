@@ -19,6 +19,7 @@ import type {
   Task,
   AnswerOut,
   DocumentInfo,
+  EmailSummary,
   InboxOut,
   TodayOut,
   ToolInfo,
@@ -50,6 +51,7 @@ type Db = {
   brief: Pick<TodayOut, "events" | "free_slots" | "unread" | "calendar_error" | "mail_error">;
   week: { days: WeekOut["days"] | null; calendar_error: string | null; full: boolean }; // days null: 7 empty days from today
   inbox: InboxOut;
+  mail: EmailSummary[]; // what "show me my emails" finds in the chat, newest first
   documents: { file: DocumentInfo; text: string }[]; // the mock "indexes" the whole text
 };
 
@@ -113,6 +115,26 @@ function fresh(): Db {
     brief: { events: [], free_slots: [], unread: [], calendar_error: null, mail_error: null },
     week: { days: null, calendar_error: null, full: false },
     inbox: { items: [], error: null },
+    mail: [
+      {
+        id: "mail-1",
+        sender: "Sam Lee <sam@example.com>",
+        subject: "Quick question about Friday",
+        snippet: "Are you still free at noon? I booked the room on the second floor.",
+        received_at: new Date().toISOString(), // (fresh() runs before nowIso is defined)
+        unread: true,
+        labels: [],
+      },
+      {
+        id: "mail-2",
+        sender: "Campus Library <no-reply@library.example>",
+        subject: "Your hold is ready",
+        snippet: "Designing Data-Intensive Applications is waiting at the front desk until Oct 9.",
+        received_at: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
+        unread: false,
+        labels: [],
+      },
+    ],
     documents: [],
   };
 }
@@ -268,6 +290,18 @@ function reply(text: string, sessionId: string): ChatEvent[] {
       preview: `To: ${to}\nSubject: Quick note\n\n${body}`,
     });
   }
+  if (/\b(e-?mails?|mail|inbox)\b/i.test(phrase)) {
+    // like search_email: one sentence, and the emails themselves as cards
+    const [newest] = db.mail;
+    const sentence = newest
+      ? `Here are ${db.mail.length} emails. The newest is from ${newest.sender.replace(/\s*<.*$/, "")}: ${newest.subject}.`
+      : "Your inbox is empty.";
+    return [
+      { type: "tool.result", call_id: newId(), ok: true, summary: sentence, emails: db.mail },
+      ...words(sentence),
+      done(),
+    ];
+  }
   const event = /^add (.+?) to my calendar tomorrow at (\d{1,2}) ?(am|pm)$/i.exec(phrase);
   if (event) {
     const [, title, hour, ampm] = event;
@@ -290,7 +324,7 @@ function reply(text: string, sessionId: string): ChatEvent[] {
   if (remember) {
     db.suggestions.unshift({ id: newId(), text: remember[1], source: `chat:${sessionId}`, status: "pending", created_at: nowIso() });
     return [
-      { type: "tool.result", call_id: newId(), ok: true, summary: `Memory suggestion: ${remember[1]}` },
+      { type: "tool.result", call_id: newId(), ok: true, summary: `Memory suggestion: ${remember[1]}`, emails: [] },
       ...words("I'll remember that once you approve it on the Memory page."),
       done(),
     ];
@@ -425,12 +459,14 @@ export const handlers = [
         text,
         source: role === "user" ? (body.source ?? "text") : "text",
         created_at: nowIso(),
+        emails: [],
       });
       messages.push(message("user", body.text));
       const events = reply(body.text, params.id);
       // like the API, the reply is stored once it's complete (here: right away)
       const text = events.map((e) => (e.type === "message.delta" ? e.text : "")).join("");
-      messages.push(message("assistant", text));
+      const emails = events.flatMap((e) => (e.type === "tool.result" ? (e.emails ?? []) : []));
+      messages.push({ ...message("assistant", text), emails });
       return sseFrames(events);
     },
   ),

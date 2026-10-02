@@ -210,7 +210,9 @@ class LoopAgent:
             if p.warnings:
                 answer += " Heads up: " + "; ".join(p.warnings) + "."
         else:
-            yield ToolResult(call_id=canonical.id, ok=outcome.ok, summary=outcome.summary)
+            yield ToolResult(
+                call_id=canonical.id, ok=outcome.ok, summary=outcome.summary, emails=outcome.emails
+            )
             answer = outcome.summary
         async for event in say(answer):
             yield event

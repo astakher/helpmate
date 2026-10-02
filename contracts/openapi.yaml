@@ -1400,6 +1400,12 @@ components:
           type: string
           format: date-time
           title: Created At
+        emails:
+          items:
+            $ref: '#/components/schemas/EmailSummary'
+          type: array
+          title: Emails
+          default: []
       additionalProperties: false
       type: object
       required:
@@ -2787,6 +2793,12 @@ components:
         summary:
           title: Summary
           type: string
+        emails:
+          default: []
+          items:
+            $ref: '#/components/schemas/EmailSummary'
+          title: Emails
+          type: array
       required:
       - call_id
       - ok

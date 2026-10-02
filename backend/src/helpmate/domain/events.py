@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from helpmate.domain.models import Proposal
+from helpmate.domain.models import EmailSummary, Proposal
 
 
 class MessageDelta(BaseModel):
@@ -30,6 +30,8 @@ class ToolResult(BaseModel):
     call_id: str
     ok: bool
     summary: str
+    # the emails behind the summary, for the chat to show as cards (Oct 2, additive)
+    emails: list[EmailSummary] = []
 
 
 class ProposalCreated(BaseModel):

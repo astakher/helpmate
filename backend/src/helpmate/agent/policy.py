@@ -9,15 +9,16 @@ Invariant (tested in tests/test_policy.py): no non-read-only tool executes witho
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
-from helpmate.agent.tools import Tool, ToolDeps, ToolRegistry
+from helpmate.agent.tools import Tool, ToolDeps, ToolRegistry, ToolReply
 from helpmate.domain.models import (
     Actor,
     AuditEntry,
+    EmailSummary,
     Proposal,
     ProposalStatus,
     ToolCall,
@@ -44,6 +45,7 @@ class ToolOutcome:
     ok: bool
     summary: str
     proposal: Proposal | None = None  # set when the call needs approval
+    emails: list[EmailSummary] = field(default_factory=list)  # shown as cards (search_email)
 
 
 class PolicyEngine:
@@ -73,6 +75,8 @@ class PolicyEngine:
                 await self._audit(Actor.AGENT, "tool.failed", call.name, error=str(exc))
                 return ToolOutcome(ok=False, summary=f"Couldn't run {call.name}: {exc}")
             await self._audit(Actor.AGENT, "tool.executed", call.name, read_only=True)
+            if isinstance(result, ToolReply):
+                return ToolOutcome(ok=True, summary=result.text, emails=result.emails)
             return ToolOutcome(ok=True, summary=result)
 
         title, summary = tool.describe(args, self._deps.tz)
@@ -128,7 +132,8 @@ class PolicyEngine:
         action = "proposal.edited" if decision == "edit" else "proposal.approved"
         await self._audit(Actor.USER, action, proposal.id, tool=proposal.tool)
         try:
-            proposal.result = await tool.execute(parsed, self._deps)
+            result = await tool.execute(parsed, self._deps)
+            proposal.result = result.text if isinstance(result, ToolReply) else result
             proposal.status = ProposalStatus.EXECUTED
             await self._audit(Actor.SYSTEM, "tool.executed", proposal.id, tool=proposal.tool)
         except Exception as exc:  # the card shows the failure; the audit log keeps it

@@ -85,7 +85,9 @@ class ScriptedAgent:
                     f"I've prepared this: {p.title} ({p.summary}). Approve the card to go ahead."
                 )
             else:
-                yield ToolResult(call_id=call.id, ok=outcome.ok, summary=outcome.summary)
+                yield ToolResult(
+                    call_id=call.id, ok=outcome.ok, summary=outcome.summary, emails=outcome.emails
+                )
                 reply = outcome.summary
 
         if reply is not None:

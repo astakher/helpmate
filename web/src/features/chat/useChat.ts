@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect } from "react";
-import type { Proposal, Source } from "../../api/types";
+import type { EmailSummary, Proposal, Source } from "../../api/types";
 
 export type Turn = {
   id: string;
@@ -8,6 +8,7 @@ export type Turn = {
   source?: Source;
   proposals: Proposal[];
   notes: string[]; // results of read-only tools
+  emails: EmailSummary[]; // shown as cards under the reply (search_email)
   streaming: boolean;
   error?: string;
   ttftMs?: number;

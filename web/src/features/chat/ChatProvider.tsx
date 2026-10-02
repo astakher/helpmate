@@ -32,6 +32,7 @@ function toTurns(messages: ChatMessage[], proposals: Proposal[]): Turn[] {
     source: m.source,
     proposals: [],
     notes: [],
+    emails: m.emails ?? [],
     streaming: false,
   }));
   const at = (iso: string) => Date.parse(iso);
@@ -128,8 +129,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const replyId = crypto.randomUUID();
       setTurns((all) => [
         ...all,
-        { id: crypto.randomUUID(), role: "user", text: trimmed, source, proposals: [], notes: [], streaming: false },
-        { id: replyId, role: "assistant", text: "", proposals: [], notes: [], streaming: true },
+        { id: crypto.randomUUID(), role: "user", text: trimmed, source, proposals: [], notes: [], emails: [], streaming: false },
+        { id: replyId, role: "assistant", text: "", proposals: [], notes: [], emails: [], streaming: true },
       ]);
       const update = (change: (turn: Turn) => Turn) =>
         setTurns((all) => all.map((t) => (t.id === replyId ? change(t) : t)));
@@ -155,7 +156,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 void queryClient.invalidateQueries({ queryKey: ["proposals"] });
                 break;
               case "tool.result":
-                update((t) => ({ ...t, notes: [...t.notes, event.summary] }));
+                // emails become cards under the reply, which already says what they are
+                update((t) =>
+                  event.emails?.length
+                    ? { ...t, emails: [...t.emails, ...event.emails] }
+                    : { ...t, notes: [...t.notes, event.summary] },
+                );
                 break;
               case "message.done":
                 update((t) => ({ ...t, streaming: false, ttftMs: event.ttft_ms ?? undefined }));

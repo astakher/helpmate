@@ -28,7 +28,7 @@ function TwoPages() {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function stored(sessionId: string, role: ChatMessage["role"], text: string, at: string): ChatMessage {
-  return { id: `${role}-${at}`, session_id: sessionId, role, text, source: "text", created_at: at };
+  return { id: `${role}-${at}`, session_id: sessionId, role, text, source: "text", created_at: at, emails: [] };
 }
 
 describe("the conversation outlives the chat page", () => {

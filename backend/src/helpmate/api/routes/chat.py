@@ -9,8 +9,8 @@ from helpmate.api.deps import ContainerDep, current_user
 from helpmate.api.schemas.bodies import CreateSessionIn, PostMessageIn
 from helpmate.api.sse import SSE_HEADERS, sse_stream
 from helpmate.container import Container
-from helpmate.domain.events import ChatEvent, MessageDelta, MessageDone
-from helpmate.domain.models import ChatMessage, ChatSession, Role, Source, new_id
+from helpmate.domain.events import ChatEvent, MessageDelta, MessageDone, ToolResult
+from helpmate.domain.models import ChatMessage, ChatSession, EmailSummary, Role, Source, new_id
 
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(current_user)])
 
@@ -107,11 +107,15 @@ def chat_title(text: str) -> str:
 async def _persist_reply(
     container: Container, session_id: str, text: str, source: Source
 ) -> AsyncIterator[ChatEvent]:
-    """Pass the agent's events through, saving the assistant's reply when it finishes."""
+    """Pass the agent's events through, saving the assistant's reply (and the emails it showed)
+    when it finishes."""
     parts: list[str] = []
+    emails: list[EmailSummary] = []
     async for event in container.agent.run(session_id, text, source):
         if isinstance(event, MessageDelta):
             parts.append(event.text)
+        elif isinstance(event, ToolResult):
+            emails.extend(event.emails)
         elif isinstance(event, MessageDone) and await container.repos.chat.get_session(session_id):
             # (not if the chat was deleted while this reply was streaming)
             await container.repos.chat.add_message(
@@ -121,6 +125,7 @@ async def _persist_reply(
                     role=Role.ASSISTANT,
                     text="".join(parts),
                     created_at=container.clock.now(),
+                    emails=emails,
                 )
             )
         yield event

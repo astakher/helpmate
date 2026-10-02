@@ -24,6 +24,28 @@ describe("ChatPage", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("shows the emails a reply found as cards, also after the app reloads", async () => {
+    const user = userEvent.setup();
+    const first = renderWithProviders(<ChatPage />);
+    await user.type(screen.getByLabelText("Message"), "show me my emails{Enter}");
+
+    const cards = await screen.findByRole("list", { name: "2 emails" });
+    const [sam, library] = within(cards).getAllByRole("listitem");
+    expect(sam).toHaveTextContent("Unread, from Sam Lee"); // the name, not "Sam Lee <sam@…>"
+    expect(sam).toHaveTextContent("Quick question about Friday");
+    expect(sam).toHaveTextContent("Are you still free at noon?");
+    expect(library).toHaveTextContent("Your hold is ready");
+    expect(library).not.toHaveTextContent("Unread");
+    expect(screen.queryByText(/sam@example\.com/)).not.toBeInTheDocument(); // no raw text dump
+    expect(await screen.findByText(/The newest is from Sam Lee/)).toBeInTheDocument();
+    expect(await axeViolations(first.container)).toEqual([]);
+    first.unmount();
+
+    renderWithProviders(<ChatPage />); // reopening the app brings the chat back, cards included
+    const restored = await screen.findByRole("list", { name: "2 emails" });
+    expect(within(restored).getAllByRole("listitem")).toHaveLength(2);
+  });
+
   it("sends a suggestion chip and shows the plain reply", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ChatPage />);

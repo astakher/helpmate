@@ -172,6 +172,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   from chat ("the last mail", `inbox_query` in `agent/tools.py`) add Gmail's `category:primary`,
   so Promotions/Social/Updates/Forums never show. A search for someone or something
   ("from:amazon", "invoice") still covers every tab. FakeMail honours the operator.
+- **Email cards in chat** (Oct 2): `search_email` returns `ToolReply {text, emails}`; the text is
+  one sentence (also what voice speaks), the emails ride on `ToolResult.emails` and are saved on
+  the reply (`ChatMessage.emails`), so `features/chat/EmailCards.tsx` shows them after a reload.
 - **Documents** (Oct 1; `agent/documents.py`, `/documents`): upload PDF/.docx/.txt/.md → bytes in
   SeaweedFS (`HELPMATE_FILES=s3`, `adapters/s3_files.py`, MinIO client), text cut into ~700-char
   passages, embedded (nomic, CPU), stored with pgvector (migration 0003); ask → top passages

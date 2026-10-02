@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -188,13 +189,41 @@ async def test_search_email_lists_unread_first_marker_and_snippet(container):
     )
     outcome = await container.policy.handle_call(_call("search_email"))
     assert outcome.ok and outcome.proposal is None
+    # one sentence to read (or hear); the emails themselves go to the chat as cards
     assert outcome.summary == (
-        "2 emails:\n"
-        "* Bank <no-reply@bank.example>: Your statement (Mon Oct 05 at 09:00) - Statement ready\n"
-        "Sam: Lunch? (Sun Oct 04 at 18:00)"
+        "Here are 2 emails, 1 unread. The newest is from Bank: Your statement."
     )
-    only_bank = await container.policy.handle_call(_call("search_email", query="statement"))
-    assert only_bank.summary.startswith("1 email:")
+    assert [m.id for m in outcome.emails] == ["1", "2"]
+    only_sam = await container.policy.handle_call(_call("search_email", query="lunch"))
+    assert only_sam.summary == "Here's your latest email, from Sam: Lunch?"  # no "?."
+    assert [m.subject for m in only_sam.emails] == ["Lunch?"]
+
+
+async def test_email_cards_stream_to_the_chat_and_come_back_with_it(client, container):
+    container.mail.inbox.append(
+        EmailSummary(
+            id="m1",
+            sender="Sam Lee <sam@example.com>",
+            subject="Quick question",
+            snippet="Are you free at noon?",
+            received_at=at(5, 9),
+        )
+    )
+    container.agent = agent_with(
+        container, ScriptLLM(lambda text: "search_email", lambda messages: call("search_email"))
+    )
+    session = (await client.post("/api/chat/sessions", json={})).json()["id"]
+    stream = await client.post(
+        f"/api/chat/sessions/{session}/messages", json={"text": "show me the last mail"}
+    )
+    lines = stream.text.splitlines()
+    events = [json.loads(line[len("data: ") :]) for line in lines if line.startswith("data: ")]
+    [result] = [e for e in events if e["type"] == "tool.result"]
+    assert [(m["id"], m["subject"]) for m in result["emails"]] == [("m1", "Quick question")]
+
+    _, reply = (await client.get(f"/api/chat/sessions/{session}/messages")).json()
+    assert reply["text"] == "Here's your latest email, from Sam Lee: Quick question."
+    assert [m["snippet"] for m in reply["emails"]] == ["Are you free at noon?"]
 
 
 async def test_list_events_and_find_free_time(container):

@@ -891,6 +891,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Emails
+             * @default []
+             */
+            emails: components["schemas"]["EmailSummary"][];
         };
         /** ChatSession */
         ChatSession: {
@@ -1683,6 +1688,11 @@ export interface components {
             ok: boolean;
             /** Summary */
             summary: string;
+            /**
+             * Emails
+             * @default []
+             */
+            emails: components["schemas"]["EmailSummary"][];
         };
         /** ToolStarted */
         ToolStarted: {

@@ -4,6 +4,7 @@ import { ProposalCard } from "../approvals/ProposalCard";
 import { PushToTalkButton, type TranscriptInfo } from "../voice/PushToTalkButton";
 import { useSpeaker } from "../voice/useSpeaker";
 import { ChatList } from "./ChatList";
+import { EmailCards } from "./EmailCards";
 import { useChat, type Turn } from "./useChat";
 
 const AUTO_SEND_KEY = "helpmate.voice.autoSend";
@@ -223,6 +224,7 @@ function Message({ turn }: { turn: Turn }) {
           {turn.source === "voice" && <span className="msg__tag">voice</span>}
         </div>
       )}
+      {turn.emails.length > 0 && <EmailCards emails={turn.emails} />}
       {turn.notes.map((note, i) => (
         <p key={i} className="msg__note">
           {note}
