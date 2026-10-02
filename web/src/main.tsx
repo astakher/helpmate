@@ -18,7 +18,16 @@ async function start() {
   } else if (import.meta.env.PROD) {
     // Production build: register the PWA service worker (offline shell + push notifications)
     const { registerSW } = await import("virtual:pwa-register");
-    registerSW({ immediate: true });
+    registerSW({
+      immediate: true,
+      // An iPhone home-screen app is resumed rather than reloaded, so it could keep an old
+      // version for days: look for a new one each time the app comes back to the foreground.
+      onRegisteredSW(_url, registration) {
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") void registration?.update().catch(() => undefined);
+        });
+      },
+    });
   }
 
   createRoot(document.getElementById("root")!).render(
