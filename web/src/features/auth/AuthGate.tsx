@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ApiError } from "../../api/client";
 import { useMe } from "../../api/queries";
 import { LoginPage } from "./LoginPage";
@@ -9,7 +9,16 @@ import { LoginPage } from "./LoginPage";
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const me = useMe();
+  const unauthorized = me.error instanceof ApiError && me.error.status === 401;
+  // Once signed out, a re-check of /api/me (the app regaining focus, e.g. back from the
+  // authenticator app) keeps the sign-in screen up: the splash would throw away the code step.
+  const [signedOut, setSignedOut] = useState(false);
+  if (unauthorized && !signedOut) setSignedOut(true);
+  if (me.isSuccess && signedOut) setSignedOut(false);
 
+  if (me.isPending && signedOut) {
+    return <LoginPage />;
+  }
   if (me.isPending) {
     return (
       <p className="splash" role="status">
@@ -17,7 +26,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </p>
     );
   }
-  if (me.error instanceof ApiError && me.error.status === 401) {
+  if (unauthorized) {
     return <LoginPage />;
   }
   if (me.isError) {
