@@ -573,6 +573,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InboxOut'
+  /api/inbox/{message_id}:
+    get:
+      tags:
+      - inbox
+      summary: Read Email
+      description: 'One email in full, as plain text (HTML mail has its tags removed; long mail is cut
+        at the
+
+        adapter''s limit). The text is the sender''s, untrusted: the web app shows it as text only.'
+      operationId: read_email_api_inbox__message_id__get
+      parameters:
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Message Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/inbox/{message_id}/draft-reply:
     post:
       tags:
@@ -1674,6 +1704,50 @@ components:
         cut
 
         into passages with embeddings, in the document repository.'
+    EmailDetail:
+      properties:
+        id:
+          type: string
+          title: Id
+        thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread Id
+        sender:
+          type: string
+          title: Sender
+        subject:
+          type: string
+          title: Subject
+        body:
+          type: string
+          title: Body
+        message_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message Id
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        labels:
+          items:
+            type: string
+          type: array
+          title: Labels
+          default: []
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - sender
+      - subject
+      - body
+      - received_at
+      title: EmailDetail
+      description: One message, read in full, for drafting a reply. Its text is untrusted (inbox triage).
     EmailSummary:
       properties:
         id:

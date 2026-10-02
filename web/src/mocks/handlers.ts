@@ -19,6 +19,7 @@ import type {
   Task,
   AnswerOut,
   DocumentInfo,
+  EmailDetail,
   EmailSummary,
   InboxOut,
   TodayOut,
@@ -52,6 +53,7 @@ type Db = {
   week: { days: WeekOut["days"] | null; calendar_error: string | null; full: boolean }; // days null: 7 empty days from today
   inbox: InboxOut;
   mail: EmailSummary[]; // what "show me my emails" finds in the chat, newest first
+  mailBodies: Record<string, string>; // message id -> the full text (default: its snippet)
   documents: { file: DocumentInfo; text: string }[]; // the mock "indexes" the whole text
 };
 
@@ -135,6 +137,11 @@ function fresh(): Db {
         labels: [],
       },
     ],
+    mailBodies: {
+      "mail-1":
+        "Hi,\n\nAre you still free at noon? I booked the room on the second floor.\n\n\n" +
+        "I'll bring the printouts for the review, and Jo is joining on video.\n\nThanks,\nSam",
+    },
     documents: [],
   };
 }
@@ -517,6 +524,21 @@ export const handlers = [
     return HttpResponse.json(reminder);
   }),
   http.get("*/api/inbox", () => HttpResponse.json<InboxOut>(db.inbox)),
+  http.get<{ id: string }>("*/api/inbox/:id", ({ params }) => {
+    const found = db.mail.find((m) => m.id === params.id) ?? db.inbox.items.find((i) => i.email.id === params.id)?.email;
+    if (!found) return notFound("message");
+    const detail: EmailDetail = {
+      id: found.id,
+      thread_id: `t-${found.id}`,
+      sender: found.sender,
+      subject: found.subject,
+      body: db.mailBodies[found.id] ?? found.snippet,
+      message_id: `<${found.id}@mock>`,
+      received_at: found.received_at,
+      labels: found.labels,
+    };
+    return HttpResponse.json(detail);
+  }),
   http.get("*/api/documents", () => HttpResponse.json(db.documents.map((d) => d.file).reverse())),
   http.post("*/api/documents", async ({ request }) => {
     const name = new URL(request.url).searchParams.get("name") ?? "document";

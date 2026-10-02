@@ -27,6 +27,7 @@ export type User = Schemas["User"];
 export type TodayOut = Schemas["TodayOut"];
 export type CalendarEvent = Schemas["CalendarEvent"];
 export type EmailSummary = Schemas["EmailSummary"];
+export type EmailDetail = Schemas["EmailDetail"];
 export type TimeRange = Schemas["TimeRange"];
 export type WeekOut = Schemas["WeekOut"];
 export type InboxOut = Schemas["InboxOut"];

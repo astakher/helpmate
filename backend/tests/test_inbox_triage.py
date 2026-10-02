@@ -35,6 +35,16 @@ def mail(
     )
 
 
+async def test_one_email_can_be_read_in_full(client, container):
+    long = mail("Trip details", "Hi! Here's the plan")
+    container.mail.inbox.append(long)
+    container.mail.bodies[long.id] = "Hi! Here's the plan for Friday.\n\nMeet at 9.\n\nSam"
+    body = (await client.get(f"/api/inbox/{long.id}")).json()
+    assert (body["subject"], body["sender"]) == ("Trip details", "Sam Lee <sam@example.com>")
+    assert body["body"] == "Hi! Here's the plan for Friday.\n\nMeet at 9.\n\nSam"
+    assert (await client.get("/api/inbox/nope")).status_code == 404
+
+
 class ObedientLLM:
     """Answers every structured call with `answer`, and also tries a tool call; records calls."""
 

@@ -1,6 +1,7 @@
 # Stand-in for Workstream B - not part of the Part C deliverable
-"""Inbox triage (agent/triage.py): GET /api/inbox sorts unread mail; POST
-/api/inbox/{message_id}/draft-reply drafts a reply as a send_email approval card."""
+"""Inbox triage (agent/triage.py): GET /api/inbox sorts unread mail; GET /api/inbox/{message_id}
+reads one email in full; POST /api/inbox/{message_id}/draft-reply drafts a reply as a send_email
+approval card."""
 
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from helpmate.api.deps import ContainerDep, current_user
 from helpmate.api.schemas.bodies import InboxOut, TriagedEmail
-from helpmate.domain.models import Proposal, ToolCall, new_id
+from helpmate.domain.models import EmailDetail, Proposal, ToolCall, new_id
 
 router = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=[Depends(current_user)])
 
@@ -37,6 +38,20 @@ async def inbox(container: ContainerDep) -> InboxOut:
             for t in sorted_mail
         ]
     )
+
+
+@router.get("/{message_id}", response_model=EmailDetail)
+async def read_email(message_id: str, container: ContainerDep) -> EmailDetail:
+    """One email in full, as plain text (HTML mail has its tags removed; long mail is cut at the
+    adapter's limit). The text is the sender's, untrusted: the web app shows it as text only."""
+    try:
+        detail = await container.mail.read(message_id)
+    except Exception as exc:  # e.g. GoogleNotConnected: its message says how to fix it
+        message = str(exc) or "mail unavailable"
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, message) from exc
+    if detail is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "message not found")
+    return detail
 
 
 @router.post(

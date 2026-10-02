@@ -46,6 +46,29 @@ describe("ChatPage", () => {
     expect(within(restored).getAllByRole("listitem")).toHaveLength(2);
   });
 
+  it("opens the whole email from its card, and closes it again", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<ChatPage />);
+    await user.type(screen.getByLabelText("Message"), "show me my emails{Enter}");
+    const [sam] = within(await screen.findByRole("list", { name: "2 emails" })).getAllByRole("listitem");
+
+    const toggle = within(sam).getByRole("button", { name: "Show full email" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    const body = await within(sam).findByText(/Jo is joining on video/);
+    // the sender's line breaks are kept; the run of three blank lines becomes one
+    expect(body.textContent).toBe(
+      "Hi,\n\nAre you still free at noon? I booked the room on the second floor.\n\n" +
+        "I'll bring the printouts for the review, and Jo is joining on video.\n\nThanks,\nSam",
+    );
+    expect(within(sam).getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+    expect(await axeViolations(container)).toEqual([]);
+
+    await user.click(within(sam).getByRole("button", { name: "Show less" }));
+    expect(within(sam).queryByText(/Jo is joining on video/)).not.toBeInTheDocument();
+    expect(sam).toHaveTextContent("Are you still free at noon?"); // back to the preview
+  });
+
   it("sends a suggestion chip and shows the plain reply", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ChatPage />);

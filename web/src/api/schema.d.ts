@@ -339,6 +339,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inbox/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Email
+         * @description One email in full, as plain text (HTML mail has its tags removed; long mail is cut at the
+         *     adapter's limit). The text is the sender's, untrusted: the web app shows it as text only.
+         */
+        get: operations["read_email_api_inbox__message_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox/{message_id}/draft-reply": {
         parameters: {
             query?: never;
@@ -1041,6 +1062,34 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * EmailDetail
+         * @description One message, read in full, for drafting a reply. Its text is untrusted (inbox triage).
+         */
+        EmailDetail: {
+            /** Id */
+            id: string;
+            /** Thread Id */
+            thread_id?: string | null;
+            /** Sender */
+            sender: string;
+            /** Subject */
+            subject: string;
+            /** Body */
+            body: string;
+            /** Message Id */
+            message_id?: string | null;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
         };
         /** EmailSummary */
         EmailSummary: {
@@ -2375,6 +2424,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InboxOut"];
+                };
+            };
+        };
+    };
+    read_email_api_inbox__message_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -26,6 +26,7 @@ export const keys = {
   chats: ["chat", "sessions"] as const,
   week: ["week"] as const,
   inbox: ["inbox"] as const,
+  email: (messageId: string) => ["email", messageId] as const,
   documents: ["documents"] as const,
 };
 
@@ -175,6 +176,17 @@ export function useInbox() {
     queryFn: async () => unwrap(await api.GET("/api/inbox")),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** One email in full (plain text), fetched only when the owner opens it; an email doesn't change. */
+export function useEmail(messageId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.email(messageId),
+    queryFn: async () => unwrap(await api.GET("/api/inbox/{message_id}", { params: { path: { message_id: messageId } } })),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
   });
 }
 
