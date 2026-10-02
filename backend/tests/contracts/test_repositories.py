@@ -23,6 +23,7 @@ from helpmate.domain.models import (
     MemoryFact,
     NotificationKind,
     NotificationSettings,
+    PermissionSettings,
     Proposal,
     ProposalStatus,
     PushKeys,
@@ -160,6 +161,16 @@ async def test_notification_settings_default_then_round_trip(repos):
     changed = NotificationSettings(max_per_hour=2, private_previews=True)
     await repos.settings.put_notification_settings(changed)
     assert await repos.settings.get_notification_settings() == changed
+
+
+async def test_permissions_start_empty_and_are_kept_apart_from_notification_settings(repos):
+    assert await repos.settings.get_permissions() == PermissionSettings()  # nothing pre-approved
+    await repos.settings.put_notification_settings(NotificationSettings(max_per_hour=3))
+    await repos.settings.put_permissions(PermissionSettings(permitted=["create_reminder"]))
+    assert (await repos.settings.get_permissions()).permitted == ["create_reminder"]
+    assert (await repos.settings.get_notification_settings()).max_per_hour == 3
+    await repos.settings.put_permissions(PermissionSettings())
+    assert await repos.settings.get_permissions() == PermissionSettings()
 
 
 async def test_chat_sessions_order_by_activity_update_and_delete(repos):

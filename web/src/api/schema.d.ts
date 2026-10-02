@@ -302,6 +302,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/week/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review
+         * @description The weekly review: tasks done, reminders sent and actions approved in the last 7 days,
+         *     what's still open or overdue, and how many events the next 7 days hold.
+         */
+        get: operations["review_api_week_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/week/schedule-task": {
         parameters: {
             query?: never;
@@ -679,6 +700,24 @@ export interface paths {
         get: operations["get_notification_settings_api_settings_notifications_get"];
         /** Put Notification Settings */
         put: operations["put_notification_settings_api_settings_notifications_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Permissions */
+        get: operations["get_permissions_api_settings_permissions_get"];
+        /** Put Permissions */
+        put: operations["put_permissions_api_settings_permissions_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1340,6 +1379,15 @@ export interface components {
             private_previews: boolean;
             /** Checkin At */
             checkin_at?: string | null;
+            /** Morning Brief At */
+            morning_brief_at?: string | null;
+            /** Weekly Review At */
+            weekly_review_at?: string | null;
+            /**
+             * Weekly Review Day
+             * @default 6
+             */
+            weekly_review_day: number;
         };
         /** PatchTaskIn */
         PatchTaskIn: {
@@ -1350,6 +1398,21 @@ export interface components {
             done?: boolean | null;
             /** Due At */
             due_at?: string | null;
+        };
+        /** PermissionsIn */
+        PermissionsIn: {
+            /** Permitted */
+            permitted: string[];
+        };
+        /**
+         * PermissionsOut
+         * @description The "permitted" tier (O6): what runs without an approval card. Empty by default.
+         */
+        PermissionsOut: {
+            /** Permitted */
+            permitted: string[];
+            /** Eligible */
+            eligible: string[];
         };
         /** PostMessageIn */
         PostMessageIn: {
@@ -1535,6 +1598,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Done At */
+            done_at?: string | null;
         };
         /** TimeRange */
         TimeRange: {
@@ -1670,6 +1735,31 @@ export interface components {
             days: components["schemas"]["DayPlan"][];
             /** Unscheduled */
             unscheduled: components["schemas"]["Task"][];
+            /** Calendar Error */
+            calendar_error?: string | null;
+        };
+        /**
+         * WeekReviewOut
+         * @description The weekly review: the last 7 days looking back, and the week ahead in one number.
+         */
+        WeekReviewOut: {
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Done Tasks */
+            done_tasks: components["schemas"]["Task"][];
+            /** Open Tasks */
+            open_tasks: components["schemas"]["Task"][];
+            /** Overdue Tasks */
+            overdue_tasks: components["schemas"]["Task"][];
+            /** Reminders Sent */
+            reminders_sent: number;
+            /** Actions Approved */
+            actions_approved: number;
+            /** Events Next Week */
+            events_next_week: number | null;
             /** Calendar Error */
             calendar_error?: string | null;
         };
@@ -2375,6 +2465,26 @@ export interface operations {
             };
         };
     };
+    review_api_week_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekReviewOut"];
+                };
+            };
+        };
+    };
     schedule_task_api_week_schedule_task_post: {
         parameters: {
             query?: never;
@@ -3072,6 +3182,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_permissions_api_settings_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionsOut"];
+                };
+            };
+        };
+    };
+    put_permissions_api_settings_permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermissionsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionsOut"];
                 };
             };
             /** @description Validation Error */

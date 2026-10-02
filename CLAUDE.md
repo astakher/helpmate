@@ -179,6 +179,17 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   `emailParagraphs.ts` makes it readable: `<https://…>` and bare URLs become link chips naming
   the real host (`rel="noopener noreferrer nofollow"`), hard-wrapped lines (≥ 60 chars) are joined,
   invisible padding (zero-width chars, NBSP, soft hyphen) and empty `<>` are dropped.
+- **Pre-approved actions + History** (Oct 2, O6): `PermissionSettings.permitted` (empty by default,
+  Settings → Pre-approved actions, `GET/PUT /api/settings/permissions`). `policy.pre_approvable`:
+  only Risk.WRITE tools (create_reminder, create_task); email/calendar always ask, even if stored.
+  A pre-approved call runs at once, audited `tool.executed` + `pre_approved: true`; every policy
+  audit entry carries `title`. `/history` shows the audit log in words and flags any change run by
+  the agent that is neither a lookup nor pre-approved (should never happen).
+- **Morning brief + weekly review** (Oct 2, O5): `worker/checkin.py` `_ScheduledPush` base;
+  `MorningBrief` (`morning_brief_at`) and `WeeklyReview` (`weekly_review_day` Mon=0 … Sun=6 at
+  `weekly_review_at`) beside `EveningCheckIn`; all off by default, switches in Settings.
+  `week_review()` feeds the push and `GET /api/week/review` (Week page "Last 7 days" card);
+  `Task.done_at` is set by PATCH when a task is ticked off.
 - **Documents** (Oct 1; `agent/documents.py`, `/documents`): upload PDF/.docx/.txt/.md → bytes in
   SeaweedFS (`HELPMATE_FILES=s3`, `adapters/s3_files.py`, MinIO client), text cut into ~700-char
   passages, embedded (nomic, CPU), stored with pgvector (migration 0003); ask → top passages

@@ -1,10 +1,14 @@
 """Policy engine: the only path by which a tool call becomes an action.
 
 - read-only tools run immediately
+- a tool the owner pre-approved (PermissionSettings.permitted, empty by default) runs
+  immediately too, but only if it changes HelpMate's own data (Risk.WRITE): email and calendar
+  actions always ask, so a message can't talk the assistant into sending or booking anything
 - every other tool call becomes a pending Proposal; it executes only via `decide(approve|edit)`
-- every step is written to the audit log
+- every step is written to the audit log, with the action's title
 
-Invariant (tested in tests/test_policy.py): no non-read-only tool executes without an approval.
+Invariant (tested in tests/test_policy.py): no non-read-only tool executes without an approval
+or the owner's explicit pre-approval.
 """
 
 from __future__ import annotations
@@ -21,11 +25,18 @@ from helpmate.domain.models import (
     EmailSummary,
     Proposal,
     ProposalStatus,
+    Risk,
     ToolCall,
     new_id,
 )
 
 Decision = Literal["approve", "reject", "edit"]
+
+
+def pre_approvable(tool: Tool[Any]) -> bool:
+    """Can the owner put this tool on the pre-approved list? Only if it changes HelpMate's own
+    data: anything that leaves the machine (an email, a calendar event) always asks."""
+    return not tool.read_only and tool.risk == Risk.WRITE
 
 
 class ProposalNotFound(LookupError):
@@ -80,6 +91,9 @@ class PolicyEngine:
             return ToolOutcome(ok=True, summary=result)
 
         title, summary = tool.describe(args, self._deps.tz)
+        permitted = (await self._deps.repos.settings.get_permissions()).permitted
+        if pre_approvable(tool) and tool.name in permitted:
+            return await self._run_pre_approved(tool, args, title)
         proposal = Proposal(
             id=new_id(),
             session_id=session_id,
@@ -93,8 +107,29 @@ class PolicyEngine:
             created_at=self._deps.clock.now(),
         )
         await self._deps.repos.proposals.add(proposal)
-        await self._audit(Actor.AGENT, "proposal.created", proposal.id, tool=tool.name)
+        await self._audit(Actor.AGENT, "proposal.created", proposal.id, tool=tool.name, title=title)
         return ToolOutcome(ok=True, summary=f"Waiting for approval: {title}", proposal=proposal)
+
+    async def _run_pre_approved(self, tool: Tool[Any], args: BaseModel, title: str) -> ToolOutcome:
+        """The owner put this tool on the pre-approved list: run it now, and say so."""
+        try:
+            result = await tool.execute(args, self._deps)
+        except Exception as exc:
+            await self._audit(
+                Actor.AGENT,
+                "tool.failed",
+                tool.name,
+                tool=tool.name,
+                title=title,
+                pre_approved=True,
+                error=str(exc),
+            )
+            return ToolOutcome(ok=False, summary=f"Couldn't do it: {exc}")
+        await self._audit(
+            Actor.AGENT, "tool.executed", tool.name, tool=tool.name, title=title, pre_approved=True
+        )
+        text = result.text if isinstance(result, ToolReply) else result
+        return ToolOutcome(ok=True, summary=f"Done without asking, as you pre-approved it: {text}")
 
     async def decide(
         self, proposal_id: str, decision: Decision, args: dict[str, Any] | None = None
@@ -111,7 +146,13 @@ class PolicyEngine:
         if decision == "reject":
             proposal.status = ProposalStatus.REJECTED
             await self._deps.repos.proposals.update(proposal)
-            await self._audit(Actor.USER, "proposal.rejected", proposal.id, tool=proposal.tool)
+            await self._audit(
+                Actor.USER,
+                "proposal.rejected",
+                proposal.id,
+                tool=proposal.tool,
+                title=proposal.title,
+            )
             return proposal
 
         tool = self._tools.get(proposal.tool)
@@ -130,17 +171,24 @@ class PolicyEngine:
             proposal.warnings = await self._warnings(tool, parsed)
 
         action = "proposal.edited" if decision == "edit" else "proposal.approved"
-        await self._audit(Actor.USER, action, proposal.id, tool=proposal.tool)
+        await self._audit(Actor.USER, action, proposal.id, tool=proposal.tool, title=proposal.title)
         try:
             result = await tool.execute(parsed, self._deps)
             proposal.result = result.text if isinstance(result, ToolReply) else result
             proposal.status = ProposalStatus.EXECUTED
-            await self._audit(Actor.SYSTEM, "tool.executed", proposal.id, tool=proposal.tool)
+            await self._audit(
+                Actor.SYSTEM, "tool.executed", proposal.id, tool=proposal.tool, title=proposal.title
+            )
         except Exception as exc:  # the card shows the failure; the audit log keeps it
             proposal.result = f"Failed: {exc}"
             proposal.status = ProposalStatus.FAILED
             await self._audit(
-                Actor.SYSTEM, "tool.failed", proposal.id, tool=proposal.tool, error=str(exc)
+                Actor.SYSTEM,
+                "tool.failed",
+                proposal.id,
+                tool=proposal.tool,
+                title=proposal.title,
+                error=str(exc),
             )
         await self._deps.repos.proposals.update(proposal)
         return proposal

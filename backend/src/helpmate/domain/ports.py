@@ -36,6 +36,7 @@ from helpmate.domain.models import (
     MemorySuggestion,
     Notification,
     NotificationSettings,
+    PermissionSettings,
     Proposal,
     ProposalStatus,
     PushSubscription,
@@ -273,6 +274,9 @@ class AuditRepo(Protocol):
 class SettingsRepo(Protocol):
     async def get_notification_settings(self) -> NotificationSettings: ...
     async def put_notification_settings(self, settings: NotificationSettings) -> None: ...
+    # the pre-approved tools (O6's "permitted" tier); empty until the owner adds one. Oct 2
+    async def get_permissions(self) -> PermissionSettings: ...
+    async def put_permissions(self, permissions: PermissionSettings) -> None: ...
 
 
 class DocumentRepo(Protocol):

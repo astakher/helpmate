@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ApiError } from "../../api/client";
-import { useScheduleTask, useWeek } from "../../api/queries";
+import { useScheduleTask, useWeek, useWeekReview } from "../../api/queries";
 import type { CalendarEvent, Proposal, Task } from "../../api/types";
 import { ProposalCard } from "../approvals/ProposalCard";
 
@@ -21,6 +21,63 @@ function freeMinutes(slots: { start: string; end: string }[]): number {
 
 const hours = (minutes: number) =>
   minutes >= 60 ? `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""}` : `${minutes} min`;
+
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+/** The weekly review: the last 7 days looking back, and what's still open. */
+function WeekReview() {
+  const review = useWeekReview();
+  const r = review.data;
+  return (
+    <section className="card brief__card" aria-labelledby="week-review">
+      <h2 id="week-review">Last 7 days</h2>
+      {review.isPending && <p className="muted">Looking back…</p>}
+      {review.isError && (
+        <p className="error" role="alert">
+          Couldn't load the review: {review.error.message}
+        </p>
+      )}
+      {r && (
+        <>
+          <p>
+            {r.done_tasks.length ? `${count(r.done_tasks.length, "task")} done` : "No tasks ticked off yet"} ·{" "}
+            {count(r.reminders_sent, "reminder")} sent · {count(r.actions_approved, "action")} approved
+          </p>
+          {r.done_tasks.length > 0 && (
+            <ul className="list">
+              {r.done_tasks.slice(0, 5).map((task) => (
+                <li key={task.id} className="list__row">
+                  <span>
+                    <span aria-hidden="true">✓ </span>
+                    {task.title}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {r.overdue_tasks.length > 0 && (
+            <>
+              <h3>Overdue</h3>
+              <ul className="list">
+                {r.overdue_tasks.map((task) => (
+                  <li key={task.id} className="list__row">
+                    <span>{task.title}</span>
+                    <span className="week__overdue">was due {task.due_at ? shortDate.format(new Date(task.due_at)) : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="muted">
+            Still open this week: {count(r.open_tasks.length, "task")}.
+            {r.events_next_week !== null && ` Next 7 days: ${count(r.events_next_week, "event")}.`}
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
 
 /** The week plan: the next 7 days, and this week's tasks that still need a time. */
 export function WeekPage() {
@@ -45,6 +102,7 @@ export function WeekPage() {
 
       {data && (
         <div className="brief">
+          <WeekReview />
           <section className="card brief__card" aria-labelledby="week-unscheduled">
             <h2 id="week-unscheduled">To fit in this week</h2>
             {data.unscheduled.length === 0 ? (

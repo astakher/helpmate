@@ -9,6 +9,7 @@ from helpmate.api.routes import (
     inbox,
     memory,
     organize,
+    permissions,
     plan,
     proposals,
     push,
@@ -31,6 +32,7 @@ for module in (
     voice,
     push,
     settings,
+    permissions,
     audit,
 ):
     api_router.include_router(module.router)

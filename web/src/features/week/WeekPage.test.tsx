@@ -31,6 +31,7 @@ const task = (title: string, extra: Partial<Task> = {}): Task => ({
   due_at: null,
   done: false,
   created_at: "2026-10-01T12:00:00Z",
+  done_at: null,
   ...extra,
 });
 
@@ -78,5 +79,28 @@ describe("the week plan", () => {
     expect((await screen.findAllByRole("alert"))[0]).toHaveTextContent("sign-in expired");
     await user.click(screen.getByRole("button", { name: "Find an hour for read chapter 3" }));
     expect(await screen.findByText(/No free 60 minutes/)).toBeInTheDocument();
+  });
+});
+
+describe("the weekly review card", () => {
+  it("looks back at the last 7 days: what got done, what's overdue, what's still open", async () => {
+    db.tasks = [
+      task("read ch. 3", { done: true, done_at: at(-1, 15) }),
+      task("old chore", { done: true, done_at: at(-20, 9) }), // done before the last 7 days
+      task("essay", { due_at: at(-2, 9) }),
+      task("lab report"),
+    ];
+    db.reminders = [
+      { id: "r1", text: "rent", due_at: at(-3, 9), recurrence: null, status: "sent", created_at: at(-4, 9) },
+    ];
+    const { container } = renderWithProviders(<WeekPage />);
+    const card = await screen.findByRole("region", { name: "Last 7 days" });
+    expect(await within(card).findByText(/1 task done · 1 reminder sent · 0 actions approved/)).toBeInTheDocument();
+    expect(within(card).getByText("read ch. 3")).toBeInTheDocument();
+    expect(within(card).queryByText("old chore")).not.toBeInTheDocument();
+    const overdue = within(card).getByRole("heading", { name: "Overdue" }).nextElementSibling as HTMLElement;
+    expect(overdue).toHaveTextContent(/essay\s*was due/);
+    expect(card).toHaveTextContent("Still open this week: 2 tasks. Next 7 days: 0 events.");
+    expect(await axeViolations(container)).toEqual([]);
   });
 });

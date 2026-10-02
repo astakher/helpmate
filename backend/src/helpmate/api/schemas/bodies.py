@@ -190,6 +190,33 @@ class InboxOut(Body):
     error: str | None = None  # the mailbox couldn't be read (e.g. Google signed out)
 
 
+# --- pre-approved actions and the weekly review (added Oct 2) ---
+
+
+class PermissionsIn(Body):
+    permitted: list[str] = Field(max_length=50)  # tool names; each must be in `eligible`
+
+
+class PermissionsOut(Body):
+    """The "permitted" tier (O6): what runs without an approval card. Empty by default."""
+
+    permitted: list[str]
+    eligible: list[str]  # tools that may be pre-approved: they change only HelpMate's own data
+
+
+class WeekReviewOut(Body):
+    """The weekly review: the last 7 days looking back, and the week ahead in one number."""
+
+    since: AwareDatetime
+    done_tasks: list[Task]  # ticked off in the last 7 days
+    open_tasks: list[Task]  # this week's tasks still open
+    overdue_tasks: list[Task]  # open, and the due date has passed
+    reminders_sent: int  # reminders that went off in the last 7 days
+    actions_approved: int  # approval cards approved (and run) in the last 7 days
+    events_next_week: int | None  # None: the calendar couldn't be read
+    calendar_error: str | None = None
+
+
 # --- documents (added Oct 1) ---
 
 

@@ -1,11 +1,12 @@
-"""Policy engine invariants: no write executes without the owner's approval."""
+"""Policy engine invariants: no write executes without the owner's approval or explicit
+pre-approval (which only covers actions on HelpMate's own data, and starts empty)."""
 
 from __future__ import annotations
 
 import pytest
 
 from helpmate.agent.policy import InvalidToolArgs, ProposalAlreadyDecided
-from helpmate.domain.models import ProposalStatus, ToolCall, new_id
+from helpmate.domain.models import PermissionSettings, ProposalStatus, ToolCall, new_id
 
 # Every non-read-only tool needs a sample here. Adding a write tool without one fails
 # test_every_write_tool_has_a_sample, so the invariant test below always covers every write tool.
@@ -99,3 +100,65 @@ async def test_api_decision_errors(client, container):
     assert (await client.post(url, json={"decision": "approve"})).status_code == 409
     missing = await client.post("/api/proposals/nope/decision", json={"decision": "approve"})
     assert missing.status_code == 404
+
+
+# --- the "permitted" tier: pre-approved actions (O6) ---------------------------------------
+
+
+async def test_nothing_is_pre_approved_until_the_owner_says_so(container, client):
+    assert (await container.repos.settings.get_permissions()).permitted == []
+    body = (await client.get("/api/settings/permissions")).json()
+    assert body["permitted"] == []
+    # only actions on HelpMate's own data can be pre-approved; email and calendar always ask
+    assert set(body["eligible"]) == {"create_reminder", "create_task"}
+
+
+async def test_a_pre_approved_action_runs_at_once_and_is_audited_as_such(container):
+    await container.repos.settings.put_permissions(PermissionSettings(permitted=["create_task"]))
+    outcome = await container.policy.handle_call(_call("create_task", **SAMPLE_ARGS["create_task"]))
+    assert outcome.ok and outcome.proposal is None
+    assert outcome.summary.startswith("Done without asking, as you pre-approved it:")
+    [task] = await container.repos.tasks.find()
+    assert task.title == "read chapter 3"
+    [entry] = await container.repos.audit.find()
+    assert (entry.action, entry.detail["pre_approved"]) == ("tool.executed", True)
+    assert entry.detail["title"].startswith("Task: read chapter 3")
+    # a tool that isn't on the list still asks
+    other = await container.policy.handle_call(
+        _call("create_reminder", **SAMPLE_ARGS["create_reminder"])
+    )
+    assert other.proposal is not None and other.proposal.status == ProposalStatus.PENDING
+
+
+async def test_email_and_calendar_always_ask_even_if_stored_as_pre_approved(container):
+    # bypassing the API (which refuses them): the policy engine ignores them anyway
+    await container.repos.settings.put_permissions(
+        PermissionSettings(permitted=["send_email", "create_event"])
+    )
+    before = await _data_snapshot(container)
+    for name in ("send_email", "create_event"):
+        outcome = await container.policy.handle_call(_call(name, **SAMPLE_ARGS[name]))
+        assert outcome.proposal is not None, name
+    assert await _data_snapshot(container) == before
+
+
+async def test_the_api_refuses_to_pre_approve_what_leaves_the_machine(client, container):
+    refused = await client.put("/api/settings/permissions", json={"permitted": ["send_email"]})
+    assert refused.status_code == 422 and "always ask" in refused.json()["detail"]
+    ok = await client.put(
+        "/api/settings/permissions",
+        json={"permitted": ["create_reminder", "create_task", "create_reminder"]},
+    )
+    assert ok.json()["permitted"] == ["create_reminder", "create_task"]  # no duplicates
+    stored = await container.repos.settings.get_permissions()
+    assert stored.permitted == ["create_reminder", "create_task"]
+    cleared = await client.put("/api/settings/permissions", json={"permitted": []})
+    assert cleared.json()["permitted"] == []
+
+
+async def test_every_step_of_an_approval_is_audited_with_its_title(container):
+    outcome = await container.policy.handle_call(_call("create_task", **SAMPLE_ARGS["create_task"]))
+    await container.policy.decide(outcome.proposal.id, "approve")
+    entries = list(reversed(await container.repos.audit.find()))  # oldest first
+    assert [e.action for e in entries] == ["proposal.created", "proposal.approved", "tool.executed"]
+    assert {e.detail["title"] for e in entries} == {outcome.proposal.title}

@@ -25,9 +25,12 @@ export const keys = {
   notificationSettings: ["settings", "notifications"] as const,
   chats: ["chat", "sessions"] as const,
   week: ["week"] as const,
+  weekReview: ["week", "review"] as const,
   inbox: ["inbox"] as const,
   email: (messageId: string) => ["email", messageId] as const,
   documents: ["documents"] as const,
+  permissions: ["settings", "permissions"] as const,
+  audit: (limit: number) => ["audit", limit] as const,
 };
 
 function useInvalidate() {
@@ -165,6 +168,23 @@ export function useWeek() {
   return useQuery({
     queryKey: keys.week,
     queryFn: async () => unwrap(await api.GET("/api/week")),
+  });
+}
+
+/** The weekly review: the last 7 days looking back (tasks done, reminders sent, approvals). */
+export function useWeekReview() {
+  return useQuery({
+    queryKey: keys.weekReview,
+    queryFn: async () => unwrap(await api.GET("/api/week/review")),
+  });
+}
+
+/** The audit log, newest first: everything HelpMate did or asked to do. */
+export function useAudit(limit: number) {
+  return useQuery({
+    queryKey: keys.audit(limit),
+    queryFn: async () => unwrap(await api.GET("/api/audit", { params: { query: { limit } } })),
+    placeholderData: (previous) => previous, // "Show more" keeps the list while it loads
   });
 }
 
@@ -443,6 +463,23 @@ export function useSaveNotificationSettings() {
     mutationFn: async (body: NotificationSettings) =>
       unwrap(await api.PUT("/api/settings/notifications", { body })),
     onSettled: () => invalidate(keys.notificationSettings),
+  });
+}
+
+/** Pre-approved actions (the "permitted" tier): empty until the owner adds one. */
+export function usePermissions() {
+  return useQuery({
+    queryKey: keys.permissions,
+    queryFn: async () => unwrap(await api.GET("/api/settings/permissions")),
+  });
+}
+
+export function useSavePermissions() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (permitted: string[]) =>
+      unwrap(await api.PUT("/api/settings/permissions", { body: { permitted } })),
+    onSettled: () => invalidate(keys.permissions),
   });
 }
 

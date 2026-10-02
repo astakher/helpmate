@@ -79,11 +79,16 @@ async def test_notification_settings_round_trip(client):
         "max_per_hour": 4,
         "private_previews": True,
         "checkin_at": "20:00:00",
+        "morning_brief_at": "07:30:00",
+        "weekly_review_at": "18:00:00",
+        "weekly_review_day": 6,
     }
     assert (await client.put("/api/settings/notifications", json=body)).status_code == 200
     assert (await client.get("/api/settings/notifications")).json() == body
     bad = await client.put("/api/settings/notifications", json={**body, "timezone": "Mars/Base"})
     assert bad.status_code == 422
+    no_such_day = {**body, "weekly_review_day": 7}  # Monday=0 … Sunday=6
+    assert (await client.put("/api/settings/notifications", json=no_such_day)).status_code == 422
 
 
 async def test_transcribe_turns_an_unreadable_recording_into_a_422(client, container):

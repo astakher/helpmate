@@ -1268,3 +1268,38 @@ input[type="radio"] {
 .mfa-note p {
   margin: 0 0 0.5rem;
 }
+
+/* ---------- Week: the review card ---------- */
+
+.week__overdue {
+  flex: none;
+  font-size: 0.9rem;
+  color: var(--warn);
+}
+
+/* ---------- History (the audit log) ---------- */
+
+.history__check {
+  margin: 0;
+  border-left: 4px solid var(--ok);
+}
+
+.history__check--bad {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.history__day h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.history__row time {
+  flex: none;
+  font-size: 0.85rem;
+}
+
+.history__row--bad {
+  border-color: var(--danger);
+}

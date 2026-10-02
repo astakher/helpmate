@@ -534,6 +534,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeekOut'
+  /api/week/review:
+    get:
+      tags:
+      - plan
+      summary: Review
+      description: 'The weekly review: tasks done, reminders sent and actions approved in the last 7 days,
+
+        what''s still open or overdue, and how many events the next 7 days hold.'
+      operationId: review_api_week_review_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeekReviewOut'
   /api/week/schedule-task:
     post:
       tags:
@@ -1116,6 +1132,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationSettings'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/settings/permissions:
+    get:
+      tags:
+      - settings
+      summary: Get Permissions
+      operationId: get_permissions_api_settings_permissions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsOut'
+    put:
+      tags:
+      - settings
+      summary: Put Permissions
+      operationId: put_permissions_api_settings_permissions_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionsIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsOut'
         '422':
           description: Validation Error
           content:
@@ -2181,6 +2234,24 @@ components:
             format: time
           - type: 'null'
           title: Checkin At
+        morning_brief_at:
+          anyOf:
+          - type: string
+            format: time
+          - type: 'null'
+          title: Morning Brief At
+        weekly_review_at:
+          anyOf:
+          - type: string
+            format: time
+          - type: 'null'
+          title: Weekly Review At
+        weekly_review_day:
+          type: integer
+          maximum: 6.0
+          minimum: 0.0
+          title: Weekly Review Day
+          default: 6
       additionalProperties: false
       type: object
       title: NotificationSettings
@@ -2211,6 +2282,38 @@ components:
       additionalProperties: false
       type: object
       title: PatchTaskIn
+    PermissionsIn:
+      properties:
+        permitted:
+          items:
+            type: string
+          type: array
+          maxItems: 50
+          title: Permitted
+      additionalProperties: false
+      type: object
+      required:
+      - permitted
+      title: PermissionsIn
+    PermissionsOut:
+      properties:
+        permitted:
+          items:
+            type: string
+          type: array
+          title: Permitted
+        eligible:
+          items:
+            type: string
+          type: array
+          title: Eligible
+      additionalProperties: false
+      type: object
+      required:
+      - permitted
+      - eligible
+      title: PermissionsOut
+      description: 'The "permitted" tier (O6): what runs without an approval card. Empty by default.'
     PostMessageIn:
       properties:
         text:
@@ -2522,6 +2625,12 @@ components:
           type: string
           format: date-time
           title: Created At
+        done_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Done At
       additionalProperties: false
       type: object
       required:
@@ -2780,6 +2889,55 @@ components:
       - unscheduled
       title: WeekOut
       description: The next 7 days, starting today, plus this week's tasks that have no date yet.
+    WeekReviewOut:
+      properties:
+        since:
+          type: string
+          format: date-time
+          title: Since
+        done_tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Done Tasks
+        open_tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Open Tasks
+        overdue_tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Overdue Tasks
+        reminders_sent:
+          type: integer
+          title: Reminders Sent
+        actions_approved:
+          type: integer
+          title: Actions Approved
+        events_next_week:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Events Next Week
+        calendar_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Calendar Error
+      additionalProperties: false
+      type: object
+      required:
+      - since
+      - done_tasks
+      - open_tasks
+      - overdue_tasks
+      - reminders_sent
+      - actions_approved
+      - events_next_week
+      title: WeekReviewOut
+      description: 'The weekly review: the last 7 days looking back, and the week ahead in one number.'
     ErrorEvent:
       properties:
         type:

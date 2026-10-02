@@ -35,6 +35,7 @@ from helpmate.domain.models import (
     MemoryFact,
     MemorySuggestion,
     NotificationSettings,
+    PermissionSettings,
     Proposal,
     ProposalStatus,
     PushSubscription,
@@ -441,9 +442,15 @@ class _Setting(BaseModel):
     value: NotificationSettings
 
 
+class _Permissions(BaseModel):  # another row of the same key/value table
+    key: str
+    value: PermissionSettings
+
+
 class PostgresSettingsRepo:
     def __init__(self, db: Database) -> None:
         self._t = _Table(db, "settings", _Setting, ("key", lambda s: s.key))
+        self._permissions = _Table(db, "settings", _Permissions, ("key", lambda s: s.key))
 
     async def get_notification_settings(self) -> NotificationSettings:
         row = await self._t.get("notifications")
@@ -451,6 +458,13 @@ class PostgresSettingsRepo:
 
     async def put_notification_settings(self, settings: NotificationSettings) -> None:
         await self._t.put(_Setting(key="notifications", value=settings))
+
+    async def get_permissions(self) -> PermissionSettings:
+        row = await self._permissions.get("permissions")
+        return row.value if row is not None else PermissionSettings()
+
+    async def put_permissions(self, permissions: PermissionSettings) -> None:
+        await self._permissions.put(_Permissions(key="permissions", value=permissions))
 
 
 TABLES = (

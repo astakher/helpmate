@@ -115,6 +115,7 @@ class Task(DomainModel):
     due_at: AwareDatetime | None = None
     done: bool = False
     created_at: AwareDatetime
+    done_at: AwareDatetime | None = None  # when it was ticked off (the weekly review). Oct 2
 
 
 # --- Folders and items (PARA + user-defined folders with custom fields) ----------------------
@@ -305,6 +306,20 @@ class NotificationSettings(DomainModel):
     # Evening check-in: a daily push at this local time summing up the week and tomorrow; None =
     # off. Added Oct 1, additive.
     checkin_at: time | None = None
+    # Morning brief: a daily push at this local time with today's events, reminders, unread
+    # mail and tasks; None = off. Weekly review: a push on `weekly_review_day` (Monday=0 …
+    # Sunday=6) at `weekly_review_at` looking back at the last 7 days; None = off. Oct 2.
+    morning_brief_at: time | None = None
+    weekly_review_at: time | None = None
+    weekly_review_day: int = Field(default=6, ge=0, le=6)
+
+
+class PermissionSettings(DomainModel):
+    """The "permitted" tier of the permission layer (O6): tools the owner pre-approved, which
+    run without an approval card. Empty by default; only tools that change HelpMate's own data
+    (Risk.WRITE) can be on it. Email and calendar actions always ask. Added Oct 2."""
+
+    permitted: list[str] = []
 
 
 # --- Audit -----------------------------------------------------------------------------------

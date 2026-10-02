@@ -15,6 +15,7 @@ import { TodayPage } from "./features/today/TodayPage";
 import { WeekPage } from "./features/week/WeekPage";
 import { InboxPage } from "./features/inbox/InboxPage";
 import { DocumentsPage } from "./features/documents/DocumentsPage";
+import { HistoryPage } from "./features/history/HistoryPage";
 
 export function App() {
   const { pathname } = useLocation();
@@ -39,6 +40,7 @@ export function App() {
               <Routes>
                 <Route path="/" element={<ChatPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
+                <Route path="/history" element={<HistoryPage />} />
                 <Route path="/today" element={<TodayPage />} />
                 <Route path="/week" element={<WeekPage />} />
                 <Route path="/inbox" element={<InboxPage />} />
@@ -76,6 +78,7 @@ function Nav() {
           </span>
         )}
       </NavLink>
+      <NavLink to="/history">History</NavLink>
       <NavLink to="/today">Today</NavLink>
       <NavLink to="/week">Week</NavLink>
       <NavLink to="/inbox">Inbox</NavLink>

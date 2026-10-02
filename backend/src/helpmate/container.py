@@ -293,11 +293,14 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         agent = LoopAgent(policy, llm, repos.memory, repos.chat, clock, settings.tz, recall)
 
     # --- Jobs beyond reminders (B) ---
-    from helpmate.worker.checkin import EveningCheckIn
+    from helpmate.worker.checkin import EveningCheckIn, MorningBrief, WeeklyReview
     from helpmate.worker.scheduler import JobScheduler
 
     if isinstance(scheduler, JobScheduler):  # dev and pg both are
+        # each one only sends once the owner turns it on in Settings
         EveningCheckIn(scheduler, repos, calendar, notifier, clock, settings.tz).install()
+        MorningBrief(scheduler, repos, calendar, mail, notifier, clock, settings.tz).install()
+        WeeklyReview(scheduler, repos, calendar, notifier, clock, settings.tz).install()
 
     return Container(
         settings=settings,

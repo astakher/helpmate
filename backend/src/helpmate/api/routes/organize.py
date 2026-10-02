@@ -118,6 +118,8 @@ async def update_task(task_id: str, body: PatchTaskIn, container: ContainerDep) 
     changes = body.model_dump(exclude_unset=True)
     if changes.get("due_at") is not None:
         changes["due_at"] = changes["due_at"].astimezone(UTC)
+    if "done" in changes and changes["done"] != task.done:  # for the weekly review
+        changes["done_at"] = container.clock.now() if changes["done"] else None
     updated = task.model_copy(update=changes)
     await container.repos.tasks.update(updated)
     return updated

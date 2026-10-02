@@ -7,11 +7,12 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from helpmate.adapters.clock import FakeClock
-from helpmate.adapters.fakes.connectors import FakeCalendar
+from helpmate.adapters.fakes.connectors import FakeCalendar, FakeMail
 from helpmate.adapters.fakes.memory_repos import InMemoryRepositories
 from helpmate.domain.models import (
     CalendarEvent,
     DeliveryResult,
+    EmailSummary,
     Horizon,
     Notification,
     NotificationSettings,
@@ -20,7 +21,7 @@ from helpmate.domain.models import (
     Task,
     new_id,
 )
-from helpmate.worker.checkin import EveningCheckIn
+from helpmate.worker.checkin import EveningCheckIn, MorningBrief, WeeklyReview
 from helpmate.worker.jobs import InMemoryJobStore
 from helpmate.worker.scheduler import JobScheduler
 
@@ -183,3 +184,115 @@ async def test_a_task_with_an_event_this_week_no_longer_needs_fitting_in(client,
     )
     week = (await client.get("/api/week")).json()
     assert [t["title"] for t in week["unscheduled"]] == ["essay"]
+
+
+# --- the morning brief and the weekly review (both off until turned on) -------------------
+
+
+async def _pushes(clock: FakeClock, settings: NotificationSettings):
+    repos = InMemoryRepositories()
+    await repos.settings.put_notification_settings(settings)
+    phone, calendar, mail = Phone(), FakeCalendar(), FakeMail()
+    jobs = JobScheduler(InMemoryJobStore(), repos, phone, clock, TZ)
+    MorningBrief(jobs, repos, calendar, mail, phone, clock, TZ).install()
+    WeeklyReview(jobs, repos, calendar, phone, clock, TZ).install()
+    return jobs, repos, calendar, mail, phone
+
+
+async def test_nothing_is_pushed_while_the_brief_and_review_are_off():
+    clock = FakeClock(at(5, 6))
+    jobs, *_, phone = await _pushes(clock, NotificationSettings())
+    for _ in range(8):
+        await jobs.tick()
+        clock.advance(days=1)
+    assert phone.shown == []
+
+
+async def test_the_morning_brief_sums_up_today_at_the_chosen_time():
+    clock = FakeClock(at(5, 6))  # Mon 06:00
+    jobs, repos, calendar, mail, phone = await _pushes(
+        clock, NotificationSettings(morning_brief_at=time(7, 30))
+    )
+    calendar.events += [
+        CalendarEvent(id="a", title="Lab", start=at(5, 13), end=at(5, 15)),
+        CalendarEvent(id="b", title="Standup", start=at(5, 9, 30), end=at(5, 10)),
+        CalendarEvent(id="c", title="Tomorrow", start=at(6, 9), end=at(6, 10)),
+    ]
+    await repos.reminders.add(Reminder(id="r", text="rent", due_at=at(5, 17), created_at=at(4, 9)))
+    await repos.tasks.add(task("essay"))
+    mail.inbox += [
+        EmailSummary(id="m1", sender="Sam", subject="Hi", snippet="", received_at=at(5, 5)),
+        EmailSummary(
+            id="m2",
+            sender="Shop",
+            subject="Sale",
+            snippet="",
+            received_at=at(5, 5),
+            labels=["CATEGORY_PROMOTIONS"],  # not the Primary tab: not counted
+        ),
+    ]
+    await jobs.tick()
+    assert await jobs.store.next_run_at() == at(5, 7, 30)
+    clock.advance(hours=1, minutes=30)
+    await jobs.tick()
+    [brief] = phone.shown
+    assert (brief.title, brief.url) == ("Good morning", "/today")
+    assert brief.body == (
+        "Today: 2 events (first at 09:30), 1 reminder. 1 unread email. 1 task left this week."
+    )
+    assert await jobs.store.next_run_at() == at(6, 7, 30)  # and tomorrow's is queued
+
+
+async def test_the_weekly_review_comes_on_the_chosen_day_and_looks_back():
+    clock = FakeClock(at(5, 12))  # Monday; the review is set for Sunday (day 6) at 18:00
+    jobs, repos, calendar, _, phone = await _pushes(
+        clock, NotificationSettings(weekly_review_at=time(18, 0), weekly_review_day=6)
+    )
+    done = task("read ch. 3").model_copy(update={"done": True, "done_at": at(5, 10)})
+    late = task("essay", due=at(8, 9))
+    await repos.tasks.add(done)
+    await repos.tasks.add(late)
+    await repos.tasks.add(task("lab report"))
+    calendar.events.append(CalendarEvent(id="e", title="Exam", start=at(12, 9), end=at(12, 11)))
+    await jobs.tick()
+    assert await jobs.store.next_run_at() == at(11, 18)  # Sunday Oct 11, not today
+    clock.advance(days=6, hours=6)
+    await jobs.tick()
+    [review] = phone.shown
+    assert (review.title, review.url) == ("Weekly review", "/week")
+    assert review.body == (
+        "Last 7 days: 1 task done. Still open: 2 tasks this week (1 overdue). Next 7 days: 1 event."
+    )
+    assert await jobs.store.next_run_at() == at(18, 18)  # next Sunday
+
+
+async def test_moving_the_review_to_another_day_stops_the_old_one():
+    clock = FakeClock(at(5, 12))
+    jobs, repos, *_, phone = await _pushes(
+        clock, NotificationSettings(weekly_review_at=time(18, 0), weekly_review_day=6)
+    )
+    await jobs.tick()  # Sunday 18:00 queued
+    await repos.settings.put_notification_settings(
+        NotificationSettings(weekly_review_at=time(18, 0), weekly_review_day=4)  # Friday
+    )
+    await jobs.tick()  # Friday Oct 9 18:00 queued too
+    clock.advance(days=4, hours=6)  # Fri 18:00
+    await jobs.tick()
+    clock.advance(days=2)  # Sun 18:00: the old job sees the day moved
+    await jobs.tick()
+    assert [n.due_at for n in phone.shown] == [at(9, 18)]
+
+
+async def test_week_review_api_counts_what_got_done(client, container, clock):
+    reminder = Reminder(id="r1", text="rent", due_at=at(5, 9), created_at=at(4, 9))
+    await container.repos.reminders.add(reminder.model_copy(update={"status": "sent"}))
+    created = (await client.post("/api/tasks", json={"title": "essay", "horizon": "week"})).json()
+    patched = (await client.patch(f"/api/tasks/{created['id']}", json={"done": True})).json()
+    assert datetime.fromisoformat(patched["done_at"]) == clock.now()  # ticked off just now
+    review = (await client.get("/api/week/review")).json()
+    assert [t["title"] for t in review["done_tasks"]] == ["essay"]
+    assert (review["reminders_sent"], review["open_tasks"]) == (1, [])
+    assert review["events_next_week"] == 0 and review["calendar_error"] is None
+    undone = (await client.patch(f"/api/tasks/{created['id']}", json={"done": False})).json()
+    assert undone["done_at"] is None  # ticked back on: not counted as done
+    assert (await client.get("/api/week/review")).json()["done_tasks"] == []

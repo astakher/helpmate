@@ -28,6 +28,7 @@ from helpmate.domain.models import (
     MemoryFact,
     MemorySuggestion,
     NotificationSettings,
+    PermissionSettings,
     Proposal,
     ProposalStatus,
     PushSubscription,
@@ -299,12 +300,19 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
 class InMemorySettingsRepo:
     def __init__(self) -> None:
         self._notifications = NotificationSettings()
+        self._permissions = PermissionSettings()
 
     async def get_notification_settings(self) -> NotificationSettings:
         return _copy(self._notifications)
 
     async def put_notification_settings(self, settings: NotificationSettings) -> None:
         self._notifications = _copy(settings)
+
+    async def get_permissions(self) -> PermissionSettings:
+        return _copy(self._permissions)
+
+    async def put_permissions(self, permissions: PermissionSettings) -> None:
+        self._permissions = _copy(permissions)
 
 
 class InMemoryRepositories:

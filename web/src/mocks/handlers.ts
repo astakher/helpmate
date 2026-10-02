@@ -3,6 +3,7 @@
 // The backend's own fakes remain the reference behaviour; keep these to the same shapes.
 import { http, HttpResponse } from "msw";
 import type {
+  AuditEntry,
   ChatEvent,
   ChatMessage,
   ChatSession,
@@ -13,6 +14,7 @@ import type {
   MemoryFact,
   MemorySuggestion,
   NotificationSettings,
+  PermissionsOut,
   Proposal,
   Reminder,
   SubscriptionIn,
@@ -25,6 +27,7 @@ import type {
   TodayOut,
   ToolInfo,
   WeekOut,
+  WeekReviewOut,
   User,
 } from "../api/types";
 
@@ -41,6 +44,8 @@ type Db = {
   suggestions: MemorySuggestion[];
   facts: MemoryFact[];
   settings: NotificationSettings;
+  permitted: string[]; // pre-approved tools (empty by default, like the API)
+  audit: AuditEntry[]; // newest first, as GET /api/audit answers
   auth: { signedIn: boolean; mfaRequired: boolean; real: boolean; mfaEnabled: boolean }; // real = a non-fake auth adapter
   vapidKey: string | null;
   subscriptions: SubscriptionIn[];
@@ -105,7 +110,18 @@ function fresh(): Db {
     items: [],
     suggestions: [],
     facts: [],
-    settings: { quiet_hours: null, timezone: "America/Toronto", max_per_hour: 6, private_previews: false, checkin_at: null },
+    settings: {
+      quiet_hours: null,
+      timezone: "America/Toronto",
+      max_per_hour: 6,
+      private_previews: false,
+      checkin_at: null,
+      morning_brief_at: null,
+      weekly_review_at: null,
+      weekly_review_day: 6,
+    },
+    permitted: [],
+    audit: sampleAudit(), // `npm run dev:mock` shows a history; tests set their own
     auth: { signedIn: true, mfaRequired: true, real: false, mfaEnabled: false },
     vapidKey: MOCK_VAPID_KEY,
     subscriptions: [],
@@ -772,4 +788,63 @@ export const handlers = [
     db.settings = await request.json();
     return HttpResponse.json(db.settings);
   }),
+
+  // --- pre-approved actions, history, weekly review (Oct 2) ---
+  http.get("*/api/settings/permissions", () =>
+    HttpResponse.json<PermissionsOut>({ permitted: db.permitted, eligible: PRE_APPROVABLE }),
+  ),
+  http.put<never, { permitted: string[] }>("*/api/settings/permissions", async ({ request }) => {
+    const { permitted } = await request.json();
+    const refused = permitted.filter((tool) => !PRE_APPROVABLE.includes(tool));
+    if (refused.length) {
+      return HttpResponse.json({ detail: `These can't be pre-approved: ${refused.join(", ")}.` }, { status: 422 });
+    }
+    db.permitted = [...new Set(permitted)];
+    return HttpResponse.json<PermissionsOut>({ permitted: db.permitted, eligible: PRE_APPROVABLE });
+  }),
+  http.get("*/api/audit", ({ request }) => {
+    const limit = Number(new URL(request.url).searchParams.get("limit") ?? 100);
+    return HttpResponse.json(db.audit.slice(0, limit));
+  }),
+  http.get("*/api/week/review", () => {
+    const now = Date.now();
+    const since = now - 7 * 86_400_000;
+    const recent = (iso?: string | null) => !!iso && Date.parse(iso) >= since;
+    const review: WeekReviewOut = {
+      since: new Date(since).toISOString(),
+      done_tasks: db.tasks.filter((t) => t.done && recent(t.done_at)),
+      open_tasks: db.tasks.filter((t) => !t.done && t.horizon === "week"),
+      overdue_tasks: db.tasks.filter((t) => !t.done && !!t.due_at && Date.parse(t.due_at) < now),
+      reminders_sent: db.reminders.filter((r) => r.status === "sent" && recent(r.due_at)).length,
+      actions_approved: db.proposals.filter((p) => p.status === "executed" && recent(p.decided_at)).length,
+      events_next_week: 0,
+      calendar_error: null,
+    };
+    return HttpResponse.json(review);
+  }),
 ];
+
+/** Like the API: only tools that change HelpMate's own data can be pre-approved. */
+const PRE_APPROVABLE = ["create_reminder", "create_task"];
+
+/** A morning's worth of history for the mock app, newest first. */
+function sampleAudit(): AuditEntry[] {
+  const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const row = (id: string, minutes: number, actor: AuditEntry["actor"], action: string, detail: AuditEntry["detail"]) => ({
+    id,
+    at: ago(minutes),
+    actor,
+    action,
+    target: String(detail.tool ?? ""),
+    detail,
+  });
+  const stretch = { tool: "create_reminder", title: "Reminder: stretch" };
+  return [
+    row("s6", 5, "agent", "tool.executed", { tool: "create_task", title: "Task: read ch. 3", pre_approved: true }),
+    row("s5", 12, "agent", "tool.executed", { tool: "search_email", read_only: true }),
+    row("s4", 30, "system", "tool.executed", stretch),
+    row("s3", 31, "user", "proposal.approved", stretch),
+    row("s2", 32, "agent", "proposal.created", stretch),
+    row("s1", 60 * 26, "user", "proposal.rejected", { tool: "send_email", title: "Email to jo@example.com" }),
+  ];
+}

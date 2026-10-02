@@ -2,7 +2,8 @@
 """The week plan: the next 7 days at a glance, and "find time" for a task.
 
 GET /api/week lists each day's events, free time (inside the owner's day hours), reminders and
-tasks due, plus this week's tasks without a date. POST /api/week/schedule-task finds the first
+tasks due, plus this week's tasks without a date. GET /api/week/review looks back at the last 7
+days (the weekly review). POST /api/week/schedule-task finds the first
 free slot of the requested length and proposes a calendar event for it: an approval card like any
 other agent write, so nothing lands in the calendar until the owner approves it.
 """
@@ -16,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from helpmate.agent.free_time import free_slots
 from helpmate.api.deps import ContainerDep, current_user
-from helpmate.api.schemas.bodies import DayPlan, ScheduleTaskIn, TimeRange, WeekOut
+from helpmate.api.schemas.bodies import DayPlan, ScheduleTaskIn, TimeRange, WeekOut, WeekReviewOut
 from helpmate.domain.models import (
     CalendarEvent,
     Horizon,
@@ -25,6 +26,7 @@ from helpmate.domain.models import (
     ToolCall,
     new_id,
 )
+from helpmate.worker.checkin import week_review
 
 router = APIRouter(prefix="/week", tags=["plan"], dependencies=[Depends(current_user)])
 
@@ -79,6 +81,23 @@ async def week(container: ContainerDep) -> WeekOut:
         days=days,
         unscheduled=unscheduled,
         calendar_error=error,
+    )
+
+
+@router.get("/review", response_model=WeekReviewOut)
+async def review(container: ContainerDep) -> WeekReviewOut:
+    """The weekly review: tasks done, reminders sent and actions approved in the last 7 days,
+    what's still open or overdue, and how many events the next 7 days hold."""
+    r = await week_review(container.repos, container.calendar, container.clock)
+    return WeekReviewOut(
+        since=r.since,
+        done_tasks=r.done_tasks,
+        open_tasks=r.open_tasks,
+        overdue_tasks=r.overdue_tasks,
+        reminders_sent=r.reminders_sent,
+        actions_approved=r.actions_approved,
+        events_next_week=r.events_next_week,
+        calendar_error=r.calendar_error,
     )
 
 
