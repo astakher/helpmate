@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { useEmail, useHealth } from "../../api/queries";
 import type { EmailSummary } from "../../api/types";
+import { EmailText } from "./emailText";
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const shortDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -15,13 +16,6 @@ function received(iso: string): string {
   start.setHours(0, 0, 0, 0);
   return d >= start ? clock.format(d) : shortDay.format(d);
 }
-
-/** Plain-text mail often has runs of blank lines and trailing spaces; keep one blank line. */
-const tidy = (body: string) =>
-  body
-    .replace(/[ \t]+$/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 
 /** The emails behind a chat reply ("show me the last mail"), as cards: who, when, the subject and
  *  the first line, newest first, with a link to the message in Gmail when Gmail is connected. */
@@ -67,7 +61,7 @@ function EmailCard({ email: m, gmail }: { email: EmailSummary; gmail: boolean })
               Couldn't open this email: {full.error.message}
             </p>
           )}
-          {full.data && (full.data.body ? tidy(full.data.body) : <span className="muted">This email has no text.</span>)}
+          {full.data && <EmailText body={full.data.body} />}
         </div>
       )}
       <div className="email-card__actions">

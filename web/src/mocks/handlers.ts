@@ -140,7 +140,8 @@ function fresh(): Db {
     mailBodies: {
       "mail-1":
         "Hi,\n\nAre you still free at noon? I booked the room on the second floor.\n\n\n" +
-        "I'll bring the printouts for the review, and Jo is joining on video.\n\nThanks,\nSam",
+        "I'll bring the printouts for the review, and Jo is joining on video.\n\n" +
+        "Room details\n<https://rooms.example.edu/booking/204?ref=mail>\n\nThanks,\nSam",
     },
     documents: [],
   };

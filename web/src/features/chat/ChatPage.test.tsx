@@ -55,12 +55,20 @@ describe("ChatPage", () => {
     const toggle = within(sam).getByRole("button", { name: "Show full email" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(toggle);
-    const body = await within(sam).findByText(/Jo is joining on video/);
-    // the sender's line breaks are kept; the run of three blank lines becomes one
-    expect(body.textContent).toBe(
-      "Hi,\n\nAre you still free at noon? I booked the room on the second floor.\n\n" +
-        "I'll bring the printouts for the review, and Jo is joining on video.\n\nThanks,\nSam",
-    );
+    const body = (await within(sam).findByText(/Jo is joining on video/)).parentElement!;
+    // paragraphs as the sender wrote them (the run of blank lines is one break), short lines kept
+    expect([...body.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "Hi,",
+      "Are you still free at noon? I booked the room on the second floor.",
+      "I'll bring the printouts for the review, and Jo is joining on video.",
+      "Room details rooms.example.edu ↗ (link, opens in a new tab)",
+      "Thanks,\nSam",
+    ]);
+    // a link shows the site it goes to, not the raw address
+    const link = within(body).getByRole("link", { name: /rooms\.example\.edu/ });
+    expect(link).toHaveAttribute("href", "https://rooms.example.edu/booking/204?ref=mail");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer nofollow");
+    expect(body).not.toHaveTextContent("https://");
     expect(within(sam).getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
     expect(await axeViolations(container)).toEqual([]);
 

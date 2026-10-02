@@ -597,6 +597,32 @@ a {
   margin: 0;
 }
 
+.email-card__body p + p {
+  margin-top: 0.7rem;
+}
+
+/* a link in an email, shown by the site it goes to */
+.email-link {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 0.45rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.6;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.email-link:hover {
+  text-decoration: underline;
+}
+
 .email-card__actions {
   display: flex;
   flex-wrap: wrap;

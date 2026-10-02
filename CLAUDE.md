@@ -176,6 +176,9 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   one sentence (also what voice speaks), the emails ride on `ToolResult.emails` and are saved on
   the reply (`ChatMessage.emails`), so `features/chat/EmailCards.tsx` shows them after a reload;
   "Show full email" loads `GET /api/inbox/{id}` (plain text, rendered as text only).
+  `emailParagraphs.ts` makes it readable: `<https://…>` and bare URLs become link chips naming
+  the real host (`rel="noopener noreferrer nofollow"`), hard-wrapped lines (≥ 60 chars) are joined,
+  invisible padding (zero-width chars, NBSP, soft hyphen) and empty `<>` are dropped.
 - **Documents** (Oct 1; `agent/documents.py`, `/documents`): upload PDF/.docx/.txt/.md → bytes in
   SeaweedFS (`HELPMATE_FILES=s3`, `adapters/s3_files.py`, MinIO client), text cut into ~700-char
   passages, embedded (nomic, CPU), stored with pgvector (migration 0003); ask → top passages
