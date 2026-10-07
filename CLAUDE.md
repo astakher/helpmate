@@ -185,14 +185,18 @@ cd backend; uv run helpmate-bench --models llama3.2:3b qwen3:4b   # needs Ollama
   A pre-approved call runs at once, audited `tool.executed` + `pre_approved: true`; every policy
   audit entry carries `title`. `/history` shows the audit log in words and flags any change run by
   the agent that is neither a lookup nor pre-approved (should never happen).
-- **Follow-ups in chat** (Oct 7, live miss: a poem, then a bare address, "send it to above"):
-  `LoopAgent` step 0 rewrites the latest message into a standalone request when the chat has
-  history (`llm_tools.STANDALONE_PROMPT`, one structured call; first messages skip it); routing
-  and tool calls use it, send_email also sees the conversation (copies the poem into `body`).
-  History: newest turns within `HISTORY_CHARS` 6000 / 20 msgs, assistant turns `quarantine`d.
-  Recipients must be in the owner's own chat messages or facts (`said`); fallback only to the
-  request's address. Empty or example-copied body -> NeedsOwner. `text_call` accepts a call the
-  model wrote out as JSON text (even missing its last braces), only for the routed tool.
+- **Follow-ups in chat** (Oct 7, two live chats about a love poem): `LoopAgent` step 0 rewrites
+  the latest message into a standalone request when the chat has history
+  (`llm_tools.STANDALONE_PROMPT`; first messages skip it); routing and tools use it. History:
+  newest turns within `HISTORY_CHARS` 6000 / 20 msgs, assistant turns `quarantine`d. **send_email
+  is written like a reply first** (`_email`): code decides the owner said what to write
+  (`says_what_to_write`), the writing step reads no addresses (`for_writing`: they made llama3.2
+  refuse 4/15), `DraftFilter` keeps refusals, intro/closing notes and fake card claims out, then
+  `EMAIL_HEADER_FORMAT` gives to/subject; the card body is exactly the text shown. Recipients must
+  be in the owner's own messages or facts (`said`); fallback only to the request's address.
+  `ClaimFilter` stops plain replies saying a card was made. `text_call` accepts a tool call
+  written as JSON text. Note: `helpmate-bench` still measures send_email as a tool call, not this
+  path; the poem replays (scratchpad replay_chat.py) cover it.
 - **Morning brief + weekly review** (Oct 2, O5): `worker/checkin.py` `_ScheduledPush` base;
   `MorningBrief` (`morning_brief_at`) and `WeeklyReview` (`weekly_review_day` Mon=0 … Sun=6 at
   `weekly_review_at`) beside `EveningCheckIn`; all off by default, switches in Settings.

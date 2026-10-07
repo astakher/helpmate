@@ -291,6 +291,218 @@ def standalone_messages(history: Sequence[LLMMessage], text: str) -> list[LLMMes
     ]
 
 
+# --- Writing an email (Oct 7) -----------------------------------------------------------------
+# The send_email tool call used to write the email inside its `body` argument. A 3B model writes
+# badly there (a love poem came out as one "Roses are red" line, then the same line again for "a
+# new one", then just the subject), the text never showed in the chat, and so a follow-up ("make
+# it longer", "show me first") couldn't see it. Now the email is written like a normal reply,
+# streamed into the chat and kept in its history; a small structured call then picks the
+# recipients and subject, and the card gets exactly the text the owner saw.
+#
+# Measured the same day (scratchpad compose_probe*, temperature 0): with the address in the
+# request, llama3.2:3b refused 4 of 15 love poems ("I can't write a poem that you will send to
+# someone else"); with addresses taken out of what it reads, 0 of 10. Asked to answer a sentinel
+# when there's nothing to write, it misjudged both ways (no poem for "write a love poem", a made-up
+# thank-you for "there you go"). So the writing step never sees an address (for_writing), code
+# decides whether the owner said what to write (says_what_to_write), and a refusal or a note
+# around the text never reaches a card (DraftFilter).
+
+EMAIL_HEADER_FORMAT = {
+    "type": "object",
+    "properties": {
+        "to": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
+        # minLength: without it the model sometimes left the subject empty (probe, Oct 7)
+        "subject": {"type": "string", "minLength": 3, "maxLength": 120},
+    },
+    "required": ["to", "subject"],
+}
+
+
+def compose_prompt(now: datetime, tz: ZoneInfo, facts: Sequence[str] = ()) -> str:
+    local = now.astimezone(tz)
+    return (
+        "You are a writing assistant. Write the text of the email the owner wants to send, in "
+        "their own voice. It's only a draft: they read it and decide whether to send it. Write "
+        "only the email's text: no title or subject line, no note before or after it, no "
+        "signature name. If they ask for something written (a poem, a note, a thank-you), write "
+        "it well and in full. If they mean text from earlier in the conversation (the poem, the "
+        "draft), write that text again exactly, unless they ask for changes or a new one, which "
+        "must then differ from the earlier one. Never make up news, facts or plans the owner "
+        "didn't give."
+        f"\n\n{memory_block(facts)}Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
+    )
+
+
+# words that say nothing about what an email should say: commands, fillers, pronouns
+_NO_CONTENT = set(
+    "send email e-mail mail write draft compose make prepare an a the to it this that these those "
+    "there here you go ok okay yes please them him her me my our your his their us now again just "
+    "also then so and for of in on with new short shorter longer quick message note letter one "
+    "can could would will i want like need is are be done thanks thank above below earlier "
+    "previous last same".split()
+)
+
+
+def says_what_to_write(request: str) -> bool:
+    """Does the request say anything about what the email should say? Code decides, not the
+    model: once addresses, names (capitalised words after the first) and the words above are
+    taken out, is anything left? "Write a love poem to my wife Bella" -> yes; "There you go
+    them" or "Send an email to Jo" -> no, so the owner is asked instead of getting made-up text."""
+    words = re.findall(r"[A-Za-z0-9'-]+", _ADDRESS.sub(" ", request))
+    left = [
+        w
+        for i, w in enumerate(words)
+        if w.lower() not in _NO_CONTENT and not (i > 0 and w[0].isupper() and w[1:].islower())
+    ]
+    return bool(left)
+
+
+def for_writing(text: str) -> str:
+    """The text with email addresses taken out, for the writing step: "sam@example.com" becomes
+    "Sam" (a plain name before the @), any other address "them"."""
+
+    def name(match: re.Match[str]) -> str:
+        local = match[0].split("@", 1)[0]
+        return local.capitalize() if local.isalpha() and len(local) <= 15 else "them"
+
+    return _ADDRESS.sub(name, text)
+
+
+_PREAMBLE = re.compile(
+    r"(?i)^(here'?s|here is|i'?ll|i will|sure|okay|ok|of course|certainly|absolutely)\b.{0,200}:$"
+)
+# what only HelpMate itself may say (that a card exists): the model imitates it from the chat's
+# history, in an email's text and in plain replies, where no card was made (live, Oct 7)
+CARD_CLAIM = re.compile(r"(?i)approve the card|i'?ve prepared (it|this)\b")
+_REFUSAL = re.compile(
+    r"(?i)^\W*(i can'?t|i cannot|i'?m (not able|unable|not allowed)|i am (not able|unable|not "
+    r"allowed)|i won'?t|sorry|i apologi[sz]e|as an ai)\b"
+)
+_CLOSING = re.compile(
+    r"(?i)^\W*(send (this|it)|i'?ll send|i will send|you can send|feel free|let me know|hope "
+    r"(this|you|she|he|they)|this (email|poem|note|message) (is|will))\b"
+)
+
+
+_SENTENCE_END = re.compile(r"[.!?]\s+|\n")
+
+
+class ClaimFilter:
+    """For a plain reply (no card can come of it): drops any sentence claiming a card was made.
+    Text is shown a sentence at a time, so it's used only when the chat already holds such a
+    claim for the model to copy."""
+
+    def __init__(self) -> None:
+        self._held = ""
+
+    def feed(self, text: str) -> str:
+        self._held += text
+        out = []
+        while match := _SENTENCE_END.search(self._held):
+            sentence, self._held = self._held[: match.end()], self._held[match.end() :]
+            if not CARD_CLAIM.search(sentence):
+                out.append(sentence)
+        return "".join(out)
+
+    def finish(self) -> str:
+        rest, self._held = self._held, ""
+        return "" if CARD_CLAIM.search(rest) else rest
+
+
+class DraftFilter:
+    """Streams what the model writes for an email, keeping out what mustn't reach the card: a
+    refusal, an intro line ("Here's a new draft:") and a closing note ("Send this to …"). It
+    shows text one line behind, so the last line can still be dropped; `body` is exactly the
+    text shown, which is what the card gets."""
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._started = False
+        self.refused = False
+        self.body = ""
+        self.subject = ""  # from a "Subject: …" first line, if it wrote one
+
+    def feed(self, text: str) -> str:
+        if self.refused:
+            return ""
+        self._pending += text
+        if not self._started:
+            head = self._pending.lstrip()
+            if "\n" not in head and len(head) < 160:
+                return ""  # wait for the first whole line
+            first, _, rest = head.partition("\n")
+            if _REFUSAL.match(first):
+                self.refused = True
+                return ""
+            if first.lower().startswith("subject:"):  # kept for the card's subject, not shown
+                self.subject = first.split(":", 1)[1].strip()
+                head = rest.lstrip("\n")
+                first, _, rest = head.partition("\n")
+            self._pending = rest.lstrip("\n") if _PREAMBLE.match(first.strip()) else head
+            self._started = True
+        lines = self._pending.split("\n")
+        if len(lines) <= 2:
+            return ""
+        out = "\n".join(lines[:-2]) + "\n"
+        self._pending = "\n".join(lines[-2:])
+        return self._show(out)
+
+    def finish(self) -> str:
+        if self.refused:
+            return ""
+        if not self._started:
+            head = self._pending.strip()
+            if _REFUSAL.match(head):
+                self.refused = True
+                return ""
+            self._pending = head
+        lines = self._pending.rstrip().split("\n")
+        while lines and (
+            not lines[-1].strip()
+            or _CLOSING.match(lines[-1])
+            or CARD_CLAIM.search(lines[-1])
+            or "@" in lines[-1]
+        ):
+            lines.pop()
+        return self._show("\n".join(lines))
+
+    def _show(self, text: str) -> str:
+        if not self.body:
+            text = text.lstrip("\n")
+        self.body += text
+        return text
+
+
+def email_header_messages(request: str, body: str, facts: Sequence[str] = ()) -> list[LLMMessage]:
+    return [
+        LLMMessage(
+            role="system",
+            content=(
+                "Give the recipients and a short subject for the owner's email. Use only email "
+                "addresses the owner wrote in their request or asked you to remember; never make "
+                "one up, and give an empty list if there is none. Answer only with JSON "
+                '{"to": [...], "subject": "..."}.\n\n' + memory_block(facts)
+            ),
+        ),
+        LLMMessage(role="user", content=f"Request: {request}\n\nEmail:\n{body[:800]}"),
+    ]
+
+
+def parse_email_header(content: str) -> tuple[list[str], str]:
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return [], ""
+    if not isinstance(data, dict):
+        return [], ""
+    to = data.get("to")
+    subject = data.get("subject")
+    return (
+        [str(a) for a in to] if isinstance(to, list) else [],
+        str(subject).strip() if isinstance(subject, str) else "",
+    )
+
+
 def text_call(text: str, name: str) -> dict[str, Any] | None:
     """llama3.2:3b sometimes writes its tool call out as JSON text instead of calling the tool
     (live, Oct 7: '{"name":"send_email","parameters":{...}}' shown in the chat). Its arguments,
@@ -341,9 +553,11 @@ def reply_prompt(now: datetime, tz: ZoneInfo, facts: Sequence[str] = ()) -> str:
     local = now.astimezone(tz)
     return (
         "You are HelpMate, a friendly, concise personal assistant running on the owner's laptop. "
-        "Answer the owner's message directly in at most three sentences. You can set reminders, "
+        "Answer the owner's message directly in at most three sentences, unless they ask to see "
+        "or write something (a poem, a draft), which you show in full. You can set reminders, "
         "add tasks, search and send email and manage their calendar when they ask; there's no "
-        "need to offer that every time.\n\n"
+        "need to offer that every time. This answer itself sends, saves and prepares nothing, "
+        "so never say that you have sent, saved or prepared something.\n\n"
         f"{memory_block(facts)}Now: {local:%A %Y-%m-%d %H:%M} ({tz.key})."
     )
 

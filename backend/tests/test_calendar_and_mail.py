@@ -326,14 +326,13 @@ def test_periods_have_sensible_defaults():
 async def test_agent_asks_for_an_address_instead_of_inventing_one(container):
     llm = ScriptLLM(
         lambda text: "send_email",
-        lambda messages: call(
-            "send_email", to=["mom@example.com"], subject="Late", body="Running late"
-        ),
+        write=lambda messages: "Hi Mom, I'm running late. See you soon!",
+        header=lambda messages: {"to": ["mom@example.com"], "subject": "Late"},  # invented
     )
     events = await run(agent_with(container, llm), "email mom that I'm running late")
     assert not any(isinstance(e, ProposalCreated) for e in events)
     assert "email address" in reply_text(events)
-    assert len(llm.calls) == 2  # route + one tool call: no retry, only the owner can fix this
+    assert len(llm.calls) == 3  # route, write, recipients: no retry, only the owner can fix this
 
 
 async def test_agent_event_card_mentions_the_conflict(container):

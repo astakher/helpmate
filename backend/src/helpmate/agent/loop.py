@@ -10,12 +10,17 @@ docs/benchmarks/llama-tool-calling-fixes.md ("routed"):
    llm_tools.STANDALONE_PROMPT). Steps 1-2 use that request. The first message of a chat skips it.
 1. Route: classify the request with NO tools attached, via structured output
    (reply | one of llm_tools.ROUTES' tools).
-2. reply -> stream a plain answer (reply_prompt, the conversation so far, no tools).
+2. reply -> stream a plain answer (reply_prompt, the conversation so far, no tools). It can't
+            claim a card it didn't make (llm_tools.ClaimFilter).
+   send_email -> written like a reply first, so the owner sees it and the chat keeps it ("make
+            it shorter", "send the poem you wrote"): code checks the owner said what to write
+            (says_what_to_write), the writing step reads no addresses (for_writing) and its
+            refusals and notes never reach the card (DraftFilter); then a small structured call
+            gives recipients and subject, checked in code (llm_tools.resolve), and the card gets
+            exactly the text shown.
    tool  -> call the model offering only that tool, with only that tool's rules (tool_prompt);
-            send_email also sees the conversation, so "send the poem you wrote" can copy it into
-            the draft. Turn the call into canonical args in code (llm_tools.resolve); if they're
-            invalid, send the problem back once. NeedsOwner (no address, nothing to say) is asked
-            back instead.
+            turn the call into canonical args in code (llm_tools.resolve); if they're invalid,
+            send the problem back once. NeedsOwner (e.g. no address) is asked back instead.
 3. The canonical call goes through the PolicyEngine exactly like the ScriptedAgent's: read-only
    tools run, every write becomes a proposal card. Nothing is written without approval.
 
@@ -160,21 +165,38 @@ class LoopAgent:
                 *history,
                 LLMMessage(role="user", content=text),
             ]
+            # a plain reply makes no card: if the chat holds "Approve the card", the model may
+            # copy it, so such sentences are dropped (only then: it costs a sentence of delay)
+            claims = (
+                llm_tools.ClaimFilter()
+                if any(llm_tools.CARD_CLAIM.search(m.content) for m in history)
+                else None
+            )
             async for chunk in self._llm.chat(messages):
-                if chunk.text:
+                if chunk.text and (shown := claims.feed(chunk.text) if claims else chunk.text):
                     first_token = first_token or time.perf_counter()
                     tokens += 1
-                    yield MessageDelta(text=chunk.text)
+                    yield MessageDelta(text=shown)
                 if chunk.output_tokens:
                     tokens = chunk.output_tokens
+            if claims and (rest := claims.finish()):
+                first_token = first_token or time.perf_counter()
+                yield MessageDelta(text=rest)
+            yield MessageDone(message_id=new_id(), ttft_ms=_ms(started, first_token), tokens=tokens)
+            return
+
+        if route == "send_email":  # written as a reply first, then prepared as a card
+            async for event in self._email(session_id, request, history, facts, said, now):
+                if isinstance(event, MessageDelta):
+                    first_token = first_token or time.perf_counter()
+                    tokens += 1
+                yield event
             yield MessageDone(message_id=new_id(), ttft_ms=_ms(started, first_token), tokens=tokens)
             return
 
         specs = [s for s in llm_tools.specs(self._policy.tools) if s.name == route]
         messages = [
             LLMMessage(role="system", content=llm_tools.tool_prompt(route, now, self._tz, facts)),
-            # an email may be about something said earlier ("send the poem you wrote")
-            *(history if route == "send_email" else []),
             LLMMessage(role="user", content=request),
         ]
         reply = await self._collect(messages, specs)
@@ -272,6 +294,76 @@ class LoopAgent:
         except llm_tools.ResolveError as exc:
             return None, exc
         return args, None
+
+    async def _email(
+        self,
+        session_id: str,
+        request: str,
+        history: list[LLMMessage],
+        facts: list[str],
+        said: str,
+        now: datetime,
+    ) -> AsyncIterator[ChatEvent]:
+        """An email: write it as a reply the owner sees (and the chat keeps), then a small call
+        picks recipients and subject, and the card gets exactly that text. Recipients are checked
+        against the owner's own words (llm_tools.resolve), as for any send_email."""
+        if not llm_tools.says_what_to_write(request):  # decided in code: never made-up text
+            yield MessageDelta(text="What should the email say?")
+            return
+        # the writing step reads no email addresses: they made llama3.2 refuse (llm_tools)
+        messages = [
+            LLMMessage(role="system", content=llm_tools.compose_prompt(now, self._tz, facts)),
+            *(LLMMessage(role=m.role, content=llm_tools.for_writing(m.content)) for m in history),
+            LLMMessage(role="user", content=llm_tools.for_writing(request)),
+        ]
+        draft_text = llm_tools.DraftFilter()
+        intro = False
+        async for chunk in self._llm.chat(messages):
+            if chunk.text and (shown := draft_text.feed(chunk.text)):
+                if not intro:
+                    intro = True
+                    yield MessageDelta(text="Here's the draft:\n\n")
+                yield MessageDelta(text=shown)
+            if draft_text.refused:
+                break
+        if rest := draft_text.finish():
+            if not intro:
+                intro = True
+                yield MessageDelta(text="Here's the draft:\n\n")
+            yield MessageDelta(text=rest)
+        body = draft_text.body.strip()
+        if draft_text.refused or not body:
+            yield MessageDelta(text="Sorry, I couldn't write that one. Could you ask again?")
+            return
+        subject_hint = draft_text.subject
+
+        header = llm_tools.email_header_messages(request, body, facts)
+        try:
+            parts = [
+                c.text
+                async for c in self._llm.chat(header, json_schema=llm_tools.EMAIL_HEADER_FORMAT)
+            ]
+            to, subject = llm_tools.parse_email_header("".join(parts))
+        except Exception:  # the owner's own address in the request is still found below
+            to, subject = [], ""
+        draft = {"to": to, "cc": [], "subject": subject or subject_hint or "Hello", "body": body}
+        written_call = ToolCall(id=new_id(), name="send_email", arguments=draft)
+        args, error = self._resolve(written_call, now, said, request)
+        if args is None:
+            yield MessageDelta(text=f"\n\n{error}")
+            return
+        call = ToolCall(id=new_id(), name="send_email", arguments=args)
+        yield ToolStarted(call_id=call.id, tool=call.name, args=call.arguments)
+        outcome = await self._policy.handle_call(call, session_id)
+        if outcome.proposal is None:
+            yield MessageDelta(text=f"\n\n{outcome.summary}")
+            return
+        yield ProposalCreated(proposal=outcome.proposal)
+        recipients = ", ".join(args["to"])
+        yield MessageDelta(
+            text=f'\n\nI\'ve prepared it as an email to {recipients} ("{args["subject"]}"). '
+            "Approve the card to send it."
+        )
 
     async def _standalone(self, history: list[LLMMessage], text: str) -> str:
         """The latest message as a request that makes sense without the chat (step 0)."""
