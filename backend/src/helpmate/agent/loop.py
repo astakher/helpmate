@@ -4,19 +4,27 @@
 A working stand-in for Workstream A's agent loop, built on the pipeline measured in
 docs/benchmarks/llama-tool-calling-fixes.md ("routed"):
 
-1. Route: classify the message with NO tools attached, via structured output
+0. Follow-ups: when the chat has earlier turns, one structured call rewrites the owner's latest
+   message into a request that stands on its own ("Amandeepgill163@gmail.com" after "Who should
+   I send it to?" -> "Email the love poem for Bella to amandeepgill163@gmail.com";
+   llm_tools.STANDALONE_PROMPT). Steps 1-2 use that request. The first message of a chat skips it.
+1. Route: classify the request with NO tools attached, via structured output
    (reply | one of llm_tools.ROUTES' tools).
-2. reply -> stream a plain answer (reply_prompt, recent chat history, no tools).
+2. reply -> stream a plain answer (reply_prompt, the conversation so far, no tools).
    tool  -> call the model offering only that tool, with only that tool's rules (tool_prompt);
-            turn its call into canonical args in code (llm_tools.resolve); if they're invalid,
-            send the problem back once. NeedsOwner (e.g. no email address) is asked back instead.
+            send_email also sees the conversation, so "send the poem you wrote" can copy it into
+            the draft. Turn the call into canonical args in code (llm_tools.resolve); if they're
+            invalid, send the problem back once. NeedsOwner (no address, nothing to say) is asked
+            back instead.
 3. The canonical call goes through the PolicyEngine exactly like the ScriptedAgent's: read-only
    tools run, every write becomes a proposal card. Nothing is written without approval.
 
-Read-only results (search_email, list_events, ...) go straight to the owner. They are never part
-of a routing or tool call (both see only the owner's current message); later plain replies may
-see them in chat history, but those have no tools. So text inside an email can't trigger a tool
-call (prompt injection), and every write still needs an approved card anyway.
+Prompt injection: emails and calendar entries never reach the model as instructions. Read-only
+results go straight to the owner; the chat keeps only the assistant's one-line summary (an email
+search's cards are stored apart), and every assistant turn given back to the model has sentences
+aimed at an AI cut out (triage.quarantine). A recipient must appear in the owner's own messages
+(or facts they saved), never in the assistant's text or an email, and every write still needs an
+approved card that shows its full text.
 
 "remember that ..." files a memory suggestion, as in the ScriptedAgent. Approved facts come back
 through memory search (memory/retrieval.py): the few that match the message go into the reply or
@@ -37,6 +45,7 @@ from zoneinfo import ZoneInfo
 
 from helpmate.agent import llm_tools
 from helpmate.agent.policy import PolicyEngine
+from helpmate.agent.triage import quarantine
 from helpmate.domain.events import (
     ChatEvent,
     MessageDelta,
@@ -57,7 +66,10 @@ from helpmate.domain.models import (
 from helpmate.domain.ports import ChatRepo, Clock, LLMPort, MemoryRepo
 from helpmate.memory.retrieval import MemoryRetriever, ScoredFact
 
-HISTORY_MESSAGES = 6  # earlier turns given to plain replies (routing and tool calls are 1-turn)
+# The conversation given back to the model, newest turns first, within a size budget (the context
+# is 4,096 tokens). It was "the last 6 messages": a poem 11 messages back was forgotten (Oct 7).
+HISTORY_CHARS = 6000
+HISTORY_MAX = 20
 _EXAMPLES = {  # shown when a request couldn't be turned into a tool call
     "create_reminder": "'remind me to call mom tomorrow at 5pm'",
     "create_task": "'add book the dentist to this term'",
@@ -131,17 +143,21 @@ class LoopAgent:
             return
 
         now = self._clock.now()
+        history, owner_said = await self._conversation(session_id, text)
+        request = await self._standalone(history, text) if history else text
         # memory search (~30 ms) runs while the router decides, so it costs no extra time
-        route, recalled = await asyncio.gather(self._route(text), self._relevant_facts(text))
+        route, recalled = await asyncio.gather(self._route(request), self._relevant_facts(request))
         facts = [] if route == "list_memory" else [s.fact.text for s in recalled]
         if facts:  # show the owner what was used, so a stale fact is easy to spot and fix
             yield ToolResult(call_id=new_id(), ok=True, summary="From memory: " + "; ".join(facts))
-        said = "\n".join([text, *facts])  # an address the owner saved counts as one they gave
+        # what the owner themselves said in this chat, and facts they saved: the only places an
+        # email address may come from
+        said = "\n".join([text, *owner_said, *facts])
 
         if route == "reply":
             messages = [
                 LLMMessage(role="system", content=llm_tools.reply_prompt(now, self._tz, facts)),
-                *await self._history(session_id, text),
+                *history,
                 LLMMessage(role="user", content=text),
             ]
             async for chunk in self._llm.chat(messages):
@@ -157,7 +173,9 @@ class LoopAgent:
         specs = [s for s in llm_tools.specs(self._policy.tools) if s.name == route]
         messages = [
             LLMMessage(role="system", content=llm_tools.tool_prompt(route, now, self._tz, facts)),
-            LLMMessage(role="user", content=text),
+            # an email may be about something said earlier ("send the poem you wrote")
+            *(history if route == "send_email" else []),
+            LLMMessage(role="user", content=request),
         ]
         reply = await self._collect(messages, specs)
         if not reply.calls:  # routed to a tool, but the model answered in words instead
@@ -167,7 +185,7 @@ class LoopAgent:
             return
 
         call = reply.calls[0]
-        args, error = self._resolve(call, now, said)
+        args, error = self._resolve(call, now, said, request)
         if isinstance(error, llm_tools.NeedsOwner):  # only the owner can fix it: ask them
             yield ToolResult(call_id=call.id, ok=False, summary=f"{call.name}: needs your input")
             async for event in say(str(error)):
@@ -186,7 +204,7 @@ class LoopAgent:
             retry = await self._collect(messages, specs)
             if retry.calls:
                 call = retry.calls[0]
-                args, error = self._resolve(call, now, said)
+                args, error = self._resolve(call, now, said, request)
 
         if args is None:
             yield ToolResult(call_id=call.id, ok=False, summary=str(error or "invalid arguments"))
@@ -237,30 +255,57 @@ class LoopAgent:
             reply.text += chunk.text
             reply.calls.extend(chunk.tool_calls)
             reply.output_tokens = chunk.output_tokens or reply.output_tokens
+        if not reply.calls and len(specs) == 1:  # the call written out as text (llm_tools)
+            arguments = llm_tools.text_call(reply.text, specs[0].name)
+            if arguments is not None:
+                reply.calls = [ToolCall(id=new_id(), name=specs[0].name, arguments=arguments)]
+                reply.text = ""
         return reply
 
     def _resolve(
-        self, call: ToolCall, now: datetime, said: str
+        self, call: ToolCall, now: datetime, said: str, asked: str
     ) -> tuple[dict[str, Any] | None, llm_tools.ResolveError | None]:
         try:
             args = llm_tools.resolve(
-                call.name, call.arguments, self._policy.tools, now, self._tz, said=said
+                call.name, call.arguments, self._policy.tools, now, self._tz, said, asked
             )
         except llm_tools.ResolveError as exc:
             return None, exc
         return args, None
 
-    async def _history(self, session_id: str, text: str) -> list[LLMMessage]:
-        """Recent turns for plain replies. The chat route stores the current message before the
-        agent runs, so it's dropped here (it's added as the final user message)."""
+    async def _standalone(self, history: list[LLMMessage], text: str) -> str:
+        """The latest message as a request that makes sense without the chat (step 0)."""
+        messages = llm_tools.standalone_messages(history, text)
+        schema = llm_tools.STANDALONE_FORMAT
+        try:
+            parts = [c.text async for c in self._llm.chat(messages, json_schema=schema)]
+        except Exception:  # never let this step stop a reply: fall back to the message as typed
+            return text
+        return llm_tools.parse_standalone("".join(parts), text)
+
+    async def _conversation(self, session_id: str, text: str) -> tuple[list[LLMMessage], list[str]]:
+        """(the earlier turns to give the model, everything the owner said in this chat).
+
+        Turns go newest first within HISTORY_CHARS, then back in order; the owner's own words
+        verbatim, the assistant's with sentences aimed at an AI cut out (an email subject in a
+        search summary can't steer the model). The chat route stores the current message before
+        the agent runs, so it's dropped here (it's added as the final user message)."""
         stored = await self._chat.find_messages(session_id)
         if stored and stored[-1].role == Role.USER and stored[-1].text == text:
             stored = stored[:-1]
-        return [
-            LLMMessage(role="user" if m.role == Role.USER else "assistant", content=m.text)
-            for m in stored[-HISTORY_MESSAGES:]
-            if m.text
-        ]
+        turns: list[LLMMessage] = []
+        used = 0
+        for m in reversed(stored):
+            if not m.text:
+                continue
+            content = m.text if m.role == Role.USER else quarantine(m.text)
+            if turns and (used + len(content) > HISTORY_CHARS or len(turns) >= HISTORY_MAX):
+                break
+            role = "user" if m.role == Role.USER else "assistant"
+            turns.append(LLMMessage(role=role, content=content))
+            used += len(content)
+        owner = [m.text for m in stored if m.role == Role.USER]
+        return list(reversed(turns)), owner
 
 
 def _ms(started: float, first_token: float | None) -> int | None:
