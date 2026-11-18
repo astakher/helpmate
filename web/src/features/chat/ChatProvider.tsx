@@ -67,6 +67,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const loadingRef = useRef<Promise<void> | null>(null);
   const loadToken = useRef(0); // only the latest load may fill the conversation
   const listenerRef = useRef<ReplyListener | null>(null);
+  const mountedRef = useRef(true);
+
+  // Going away mid-reply (closing the app, or a test ending): stop the reply and a history load
+  // still in flight, and drop their late events, which would otherwise call setState after the
+  // page is gone.
+  useEffect(() => {
+    mountedRef.current = true; // StrictMode unmounts and remounts once in dev
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      loadToken.current++;
+    };
+  }, []);
 
   const refreshList = useCallback(() => void queryClient.invalidateQueries({ queryKey: keys.chats }), [queryClient]);
 
@@ -132,8 +146,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         { id: crypto.randomUUID(), role: "user", text: trimmed, source, proposals: [], notes: [], emails: [], streaming: false },
         { id: replyId, role: "assistant", text: "", proposals: [], notes: [], emails: [], streaming: true },
       ]);
-      const update = (change: (turn: Turn) => Turn) =>
-        setTurns((all) => all.map((t) => (t.id === replyId ? change(t) : t)));
+      const update = (change: (turn: Turn) => Turn) => {
+        if (mountedRef.current) setTurns((all) => all.map((t) => (t.id === replyId ? change(t) : t)));
+      };
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -175,7 +190,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           },
           controller.signal,
         );
-        if (reply) listenerRef.current?.(reply, source);
+        if (reply && mountedRef.current) listenerRef.current?.(reply, source);
       } catch (error) {
         const aborted = error instanceof DOMException && error.name === "AbortError";
         update((t) => ({ ...t, error: aborted ? undefined : String((error as Error).message ?? error) }));

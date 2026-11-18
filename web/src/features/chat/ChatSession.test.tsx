@@ -1,10 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { NavLink, Route, Routes } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "../../App";
-import type { ChatMessage } from "../../api/types";
+import type { ChatEvent, ChatMessage } from "../../api/types";
 import { db } from "../../mocks/handlers";
+import { server } from "../../mocks/node";
 import { renderWithProviders } from "../../test/render";
 import { ChatPage } from "./ChatPage";
 import { SESSION_KEY } from "./useChat";
@@ -129,5 +131,63 @@ describe("in the real app shell", () => {
     await screen.findByRole("heading", { level: 1, name: /Memory/ });
     await user.click(screen.getByRole("link", { name: "Chat" }));
     expect(await within(screen.getByRole("log")).findByText("add task read chapter 3 this term")).toBeInTheDocument();
+  });
+});
+
+describe("a reply still streaming when the app goes away", () => {
+  it("is stopped, and its late events don't reach React", async () => {
+    // CI once failed this way: a test ended mid-reply, the test environment (window included) was
+    // torn down, and the reply's last event then called setState -> "window is not defined".
+    let firstSent!: () => void;
+    let streamClosed!: () => void;
+    const sent = new Promise<void>((resolve) => (firstSent = resolve));
+    const closed = new Promise<void>((resolve) => (streamClosed = resolve));
+    const encoder = new TextEncoder();
+    const frame = (event: ChatEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+    server.use(
+      http.post("*/api/chat/sessions/:id/messages", () =>
+        new HttpResponse(
+          new ReadableStream({
+            async start(controller) {
+              try {
+                controller.enqueue(frame({ type: "message.delta", text: "Still " }));
+                firstSent();
+                await sleep(50);
+                controller.enqueue(frame({ type: "message.delta", text: "typing" }));
+                controller.enqueue(frame({ type: "message.done", message_id: "m1", ttft_ms: 1, tokens: 2 }));
+                controller.close();
+              } catch {
+                // the client cancelled the stream: nothing more to send
+              } finally {
+                streamClosed();
+              }
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+      ),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<ChatPage />);
+    await user.type(screen.getByLabelText("Message"), "hello{Enter}");
+    await sent;
+    expect(await screen.findByText(/Still/)).toBeInTheDocument();
+    const replyCall = fetchSpy.mock.calls.find(
+      ([url, init]) => String(url).endsWith("/messages") && init?.method === "POST",
+    );
+    const replySignal = replyCall?.[1]?.signal;
+    expect(replySignal?.aborted).toBe(false);
+
+    unmount();
+    expect(replySignal?.aborted).toBe(true); // leaving stops the reply
+    vi.stubGlobal("window", undefined); // what the environment's teardown leaves behind
+    try {
+      await closed;
+      await sleep(30); // let the client read whatever was still on its way
+    } finally {
+      vi.unstubAllGlobals();
+      fetchSpy.mockRestore();
+    }
   });
 });
