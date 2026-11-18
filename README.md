@@ -2,7 +2,9 @@
 
 A local-first agentic personal assistant and "second brain". The language model, speech recognition, speech synthesis and all personal data stay on hardware the owner controls. Every change the agent wants to make needs one-tap approval and is logged.
 
-ENG TECH 4FD3 Senior Engineering Project, Fall 2026: Aman Takher, Jaskaran Bedi, Pratham Chauhan.
+**Author:** Aman Takher. This repository is my own end-to-end build of HelpMate, and I'm the only person who has committed to it. It covers the backend, the web app, voice, notifications, the API contract and CI.
+
+HelpMate is also our ENG TECH 4FD3 Senior Engineering Project (Fall 2026), a three-person team project with Jaskaran Bedi and Pratham Chauhan. On that team I own Workstream C (web app, voice, notifications). Workstreams A (agent and AI) and B (platform and integrations) belong to my teammates, who build their versions in the team's repo. The A and B code here is my own working stand-in, so the whole app runs end to end. See [docs/part-c.md](docs/part-c.md).
 
 ![Architecture](docs/img/architecture.png)
 
